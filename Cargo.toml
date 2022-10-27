@@ -13,3 +13,4 @@ categories = ["science", "network-programming", "api-bindings", "asynchronous"]
 license = "MIT/Apache-2.0"
 
 [dependencies]
+libc = "0.2"
