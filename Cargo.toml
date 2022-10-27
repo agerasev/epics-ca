@@ -1,0 +1,15 @@
+[package]
+name = "epics-ca"
+version = "0.1.0"
+edition = "2021"
+
+description = "Rust bindings for EPICS Channel Access protocol"
+documentation = "https://docs.rs/epics-ca"
+homepage = "https://github.com/agerasev/epics-ca"
+repository = "https://github.com/agerasev/epics-ca.git"
+readme = "README.md"
+keywords = ["epics", "async"]
+categories = ["science", "network-programming", "api-bindings", "asynchronous"]
+license = "MIT/Apache-2.0"
+
+[dependencies]
