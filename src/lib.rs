@@ -1,31 +1,8 @@
+mod error;
 mod sys;
 
 use core::ffi::*;
-
-use sys::ca_preemptive_callback_select;
-
-#[derive(Debug, Clone, Copy)]
-pub struct Eca {
-    raw: c_int,
-}
-impl Eca {
-    fn from_raw(raw: c_int) -> Self {
-        Self { raw }
-    }
-    fn raw(&self) -> c_int {
-        self.raw
-    }
-
-    pub fn msg_no(&self) -> c_int {
-        sys::err::CA_EXTRACT_MSG_NO(self.raw)
-    }
-    pub fn severity(&self) -> c_int {
-        sys::err::CA_EXTRACT_SEVERITY(self.raw)
-    }
-    pub fn success(&self) -> c_int {
-        sys::err::CA_EXTRACT_SEVERITY(self.raw)
-    }
-}
+use error::Error;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Dbf {
@@ -175,16 +152,17 @@ pub struct Context {
 }
 
 impl Context {
-    fn new(preemptive_callback: bool) -> Self {
+    pub fn new(preemptive_callback: bool) -> Result<Self, Error> {
         let select = if preemptive_callback {
-            ca_preemptive_callback_select::ca_enable_preemptive_callback
+            sys::ca_preemptive_callback_select::ca_enable_preemptive_callback
         } else {
-            ca_preemptive_callback_select::ca_disable_preemptive_callback
+            sys::ca_preemptive_callback_select::ca_disable_preemptive_callback
         };
-        let eca = Eca::from_raw(unsafe { sys::ca_context_create(select) });
+        Error::try_from_raw(unsafe { sys::ca_context_create(select) })?;
         let raw = unsafe { sys::ca_current_context() };
         assert!(!raw.is_null());
-        Self { raw }
+        Self::detach();
+        Ok(Self { raw })
     }
     fn attach(&mut self) {
         unsafe { sys::ca_attach_context(self.raw) };
@@ -195,6 +173,7 @@ impl Context {
 }
 impl Drop for Context {
     fn drop(&mut self) {
+        self.attach();
         unsafe { sys::ca_context_destroy() };
     }
 }
