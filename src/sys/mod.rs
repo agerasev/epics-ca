@@ -5,75 +5,19 @@
     clippy::missing_safety_doc
 )]
 
-pub mod err;
-pub mod types;
+mod err;
+mod types;
 
 use core::ffi::*;
+
+pub use err::*;
+pub use types::*;
 
 pub const epicsTimeOK: u32 = 0;
 
 pub const epicsTimeEventCurrentTime: u32 = 0;
 pub const epicsTimeEventBestTime: i32 = -1;
 pub const epicsTimeEventDeviceTime: i32 = -2;
-
-pub const MAX_UNITS_SIZE: usize = 8;
-pub const MAX_ENUM_STRING_SIZE: usize = 26;
-pub const MAX_ENUM_STATES: usize = 16;
-
-pub const DBF_STRING: c_ulong = 0;
-pub const DBF_INT: c_ulong = 1;
-pub const DBF_SHORT: c_ulong = 1;
-pub const DBF_FLOAT: c_ulong = 2;
-pub const DBF_ENUM: c_ulong = 3;
-pub const DBF_CHAR: c_ulong = 4;
-pub const DBF_LONG: c_ulong = 5;
-pub const DBF_DOUBLE: c_ulong = 6;
-pub const DBF_NO_ACCESS: c_ulong = 7;
-
-pub const DBR_STRING: c_ulong = 0;
-pub const DBR_INT: c_ulong = 1;
-pub const DBR_SHORT: c_ulong = 1;
-pub const DBR_FLOAT: c_ulong = 2;
-pub const DBR_ENUM: c_ulong = 3;
-pub const DBR_CHAR: c_ulong = 4;
-pub const DBR_LONG: c_ulong = 5;
-pub const DBR_DOUBLE: c_ulong = 6;
-pub const DBR_STS_STRING: c_ulong = 7;
-pub const DBR_STS_SHORT: c_ulong = 8;
-pub const DBR_STS_INT: c_ulong = 8;
-pub const DBR_STS_FLOAT: c_ulong = 9;
-pub const DBR_STS_ENUM: c_ulong = 10;
-pub const DBR_STS_CHAR: c_ulong = 11;
-pub const DBR_STS_LONG: c_ulong = 12;
-pub const DBR_STS_DOUBLE: c_ulong = 13;
-pub const DBR_TIME_STRING: c_ulong = 14;
-pub const DBR_TIME_INT: c_ulong = 15;
-pub const DBR_TIME_SHORT: c_ulong = 15;
-pub const DBR_TIME_FLOAT: c_ulong = 16;
-pub const DBR_TIME_ENUM: c_ulong = 17;
-pub const DBR_TIME_CHAR: c_ulong = 18;
-pub const DBR_TIME_LONG: c_ulong = 19;
-pub const DBR_TIME_DOUBLE: c_ulong = 20;
-pub const DBR_GR_STRING: c_ulong = 21;
-pub const DBR_GR_SHORT: c_ulong = 22;
-pub const DBR_GR_INT: c_ulong = 22;
-pub const DBR_GR_FLOAT: c_ulong = 23;
-pub const DBR_GR_ENUM: c_ulong = 24;
-pub const DBR_GR_CHAR: c_ulong = 25;
-pub const DBR_GR_LONG: c_ulong = 26;
-pub const DBR_GR_DOUBLE: c_ulong = 27;
-pub const DBR_CTRL_STRING: c_ulong = 28;
-pub const DBR_CTRL_SHORT: c_ulong = 29;
-pub const DBR_CTRL_INT: c_ulong = 29;
-pub const DBR_CTRL_FLOAT: c_ulong = 30;
-pub const DBR_CTRL_ENUM: c_ulong = 31;
-pub const DBR_CTRL_CHAR: c_ulong = 32;
-pub const DBR_CTRL_LONG: c_ulong = 33;
-pub const DBR_CTRL_DOUBLE: c_ulong = 34;
-pub const DBR_PUT_ACKT: c_ulong = 35;
-pub const DBR_PUT_ACKS: c_ulong = 36;
-pub const DBR_STSACK_STRING: c_ulong = 37;
-pub const DBR_CLASS_NAME: c_ulong = 38;
 
 pub const DBE_VALUE: c_ulong = 1;
 pub const DBE_ARCHIVE: c_ulong = 2;

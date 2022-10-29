@@ -1,150 +1,9 @@
-mod error;
 mod sys;
 
-use core::ffi::*;
+pub mod error;
+pub mod types;
+
 use error::Error;
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Dbf {
-    String,
-    Short,
-    Int,
-    Float,
-    Enum,
-    Char,
-    Long,
-    Double,
-}
-
-impl Dbf {
-    fn raw(&self) -> c_ulong {
-        match self {
-            Dbf::String => sys::DBF_STRING,
-            Dbf::Short => sys::DBF_SHORT,
-            Dbf::Int => sys::DBF_INT,
-            Dbf::Float => sys::DBF_FLOAT,
-            Dbf::Enum => sys::DBF_ENUM,
-            Dbf::Char => sys::DBF_CHAR,
-            Dbf::Long => sys::DBF_LONG,
-            Dbf::Double => sys::DBF_DOUBLE,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Dbr {
-    Base(Dbf),
-    Sts(Dbf),
-    Time(Dbf),
-    Gr(Dbf),
-    Ctrl(Dbf),
-    PutAck(bool),
-    StsackString,
-    ClassName,
-}
-
-impl Dbr {
-    fn raw(&self) -> c_ulong {
-        match self {
-            Dbr::Base(dbf) => match dbf {
-                Dbf::String => sys::DBR_STRING,
-                Dbf::Int => sys::DBR_INT,
-                Dbf::Short => sys::DBR_SHORT,
-                Dbf::Float => sys::DBR_FLOAT,
-                Dbf::Enum => sys::DBR_ENUM,
-                Dbf::Char => sys::DBR_CHAR,
-                Dbf::Long => sys::DBR_LONG,
-                Dbf::Double => sys::DBR_DOUBLE,
-            },
-            Dbr::Sts(dbf) => match dbf {
-                Dbf::String => sys::DBR_STS_STRING,
-                Dbf::Short => sys::DBR_STS_SHORT,
-                Dbf::Int => sys::DBR_STS_INT,
-                Dbf::Float => sys::DBR_STS_FLOAT,
-                Dbf::Enum => sys::DBR_STS_ENUM,
-                Dbf::Char => sys::DBR_STS_CHAR,
-                Dbf::Long => sys::DBR_STS_LONG,
-                Dbf::Double => sys::DBR_STS_DOUBLE,
-            },
-            Dbr::Time(dbf) => match dbf {
-                Dbf::String => sys::DBR_TIME_STRING,
-                Dbf::Int => sys::DBR_TIME_INT,
-                Dbf::Short => sys::DBR_TIME_SHORT,
-                Dbf::Float => sys::DBR_TIME_FLOAT,
-                Dbf::Enum => sys::DBR_TIME_ENUM,
-                Dbf::Char => sys::DBR_TIME_CHAR,
-                Dbf::Long => sys::DBR_TIME_LONG,
-                Dbf::Double => sys::DBR_TIME_DOUBLE,
-            },
-            Dbr::Gr(dbf) => match dbf {
-                Dbf::String => sys::DBR_GR_STRING,
-                Dbf::Short => sys::DBR_GR_SHORT,
-                Dbf::Int => sys::DBR_GR_INT,
-                Dbf::Float => sys::DBR_GR_FLOAT,
-                Dbf::Enum => sys::DBR_GR_ENUM,
-                Dbf::Char => sys::DBR_GR_CHAR,
-                Dbf::Long => sys::DBR_GR_LONG,
-                Dbf::Double => sys::DBR_GR_DOUBLE,
-            },
-            Dbr::Ctrl(dbf) => match dbf {
-                Dbf::String => sys::DBR_CTRL_STRING,
-                Dbf::Short => sys::DBR_CTRL_SHORT,
-                Dbf::Int => sys::DBR_CTRL_INT,
-                Dbf::Float => sys::DBR_CTRL_FLOAT,
-                Dbf::Enum => sys::DBR_CTRL_ENUM,
-                Dbf::Char => sys::DBR_CTRL_CHAR,
-                Dbf::Long => sys::DBR_CTRL_LONG,
-                Dbf::Double => sys::DBR_CTRL_DOUBLE,
-            },
-            Dbr::PutAck(ts) => match ts {
-                false => sys::DBR_PUT_ACKT,
-                true => sys::DBR_PUT_ACKS,
-            },
-            Dbr::StsackString => sys::DBR_STSACK_STRING,
-            Dbr::ClassName => sys::DBR_CLASS_NAME,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Dbe {
-    Value,
-    Archive,
-    Log,
-    Alarm,
-    Property,
-}
-
-impl Dbe {
-    fn raw(&self) -> c_ulong {
-        match self {
-            Dbe::Value => sys::DBE_VALUE,
-            Dbe::Archive => sys::DBE_ARCHIVE,
-            Dbe::Log => sys::DBE_LOG,
-            Dbe::Alarm => sys::DBE_ALARM,
-            Dbe::Property => sys::DBE_PROPERTY,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct AccessRights {
-    read_access: bool,
-    write_access: bool,
-}
-
-impl AccessRights {
-    fn raw(self) -> sys::ca_access_rights {
-        let mut raw = 0;
-        if self.read_access {
-            raw |= sys::CA_READ_ACCESS;
-        }
-        if self.write_access {
-            raw |= sys::CA_WRITE_ACCESS;
-        }
-        raw
-    }
-}
 
 #[derive(Debug)]
 pub struct Context {
@@ -152,8 +11,8 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(preemptive_callback: bool) -> Result<Self, Error> {
-        let select = if preemptive_callback {
+    pub fn new(preemptive: bool) -> Result<Self, Error> {
+        let select = if preemptive {
             sys::ca_preemptive_callback_select::ca_enable_preemptive_callback
         } else {
             sys::ca_preemptive_callback_select::ca_disable_preemptive_callback
