@@ -1,11 +1,16 @@
-mod sys;
-
 pub mod error;
 pub mod types;
 
-use crate::{error::Error, types::DbRequest};
+#[cfg(test)]
+mod tests;
+
+mod sys {
+    pub use epics_sys::cadef::*;
+}
+
+use crate::error::Error;
 use std::{
-    ffi::{self, CStr},
+    ffi::CStr,
     marker::PhantomData,
     ptr::{self, NonNull},
     rc::Rc,
@@ -72,10 +77,17 @@ fn pend_io(ctx: &Context, timeout: Duration) -> Result<(), Error> {
     Error::try_from_raw(unsafe { sys::ca_pend_io(timeout.as_secs_f64()) })
 }
 
+trait Ptr {
+    type NonNull;
+}
+impl<T> Ptr for *mut T {
+    type NonNull = NonNull<T>;
+}
+
 #[derive(Debug)]
 pub struct Channel {
     ctx: Rc<Context>,
-    raw: NonNull<ffi::c_void>,
+    raw: <sys::chanId as Ptr>::NonNull,
 }
 impl Channel {
     pub fn new(ctx: Rc<Context>, name: &CStr) -> Result<Self, Error> {

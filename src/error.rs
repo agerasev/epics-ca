@@ -1,6 +1,6 @@
-use core::ffi::*;
-
-use crate::sys;
+mod sys {
+    pub use epics_sys::caerr::*;
+}
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
@@ -35,11 +35,11 @@ pub enum ErrorKind {
     N16karrayclient,
     Connseqtmo,
     Unresptmo,
-    Other(c_int),
+    Other(i32),
 }
 
 impl ErrorKind {
-    const ECA_MAP: [(Self, c_int); 31] = [
+    const ECA_MAP: [(Self, i32); 31] = [
         (Self::Allocmem, sys::ECA_ALLOCMEM),
         (Self::Tolarge, sys::ECA_TOLARGE),
         (Self::Timeout, sys::ECA_TIMEOUT),
@@ -73,7 +73,7 @@ impl ErrorKind {
         (Self::Unresptmo, sys::ECA_UNRESPTMO),
     ];
 
-    pub fn from_raw_msg_no(msg_no: c_int) -> Self {
+    pub fn from_raw_msg_no(msg_no: i32) -> Self {
         for (this, eca) in Self::ECA_MAP {
             if msg_no == sys::CA_EXTRACT_MSG_NO(eca) {
                 return this;
@@ -82,7 +82,7 @@ impl ErrorKind {
         Self::Other(msg_no)
     }
 
-    pub fn to_raw_msg_no(self) -> c_int {
+    pub fn to_raw_msg_no(self) -> i32 {
         if let Self::Other(msg_no) = self {
             return msg_no;
         } else {
@@ -105,7 +105,7 @@ pub enum ErrorSeverity {
 }
 
 impl ErrorSeverity {
-    pub fn from_raw_severity(severity: c_int) -> Self {
+    pub fn from_raw_severity(severity: i32) -> Self {
         match severity {
             sys::CA_K_ERROR => Self::Error,
             sys::CA_K_WARNING => Self::Warning,
@@ -115,7 +115,7 @@ impl ErrorSeverity {
         }
     }
 
-    pub fn to_raw_severity(self) -> c_int {
+    pub fn to_raw_severity(self) -> i32 {
         match self {
             Self::Error => sys::CA_K_ERROR,
             Self::Warning => sys::CA_K_WARNING,
@@ -132,7 +132,7 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn try_from_raw(eca: c_int) -> Result<(), Self> {
+    pub fn try_from_raw(eca: i32) -> Result<(), Self> {
         if sys::CA_EXTRACT_SUCCESS(eca) != 0 {
             Ok(())
         } else {
@@ -143,7 +143,7 @@ impl Error {
         }
     }
 
-    pub fn into_raw(self) -> c_int {
+    pub fn into_raw(self) -> i32 {
         sys::CA_INSERT_MSG_NO(self.kind.to_raw_msg_no())
             | sys::CA_INSERT_SEVERITY(self.severity.to_raw_severity())
     }

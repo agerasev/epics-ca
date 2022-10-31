@@ -1,5 +1,6 @@
-use crate::sys;
-use core::ffi::*;
+mod sys {
+    pub use epics_sys::{cadef::*, caeventmask::*, db_access::*};
+}
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
@@ -14,7 +15,7 @@ pub enum DbField {
 }
 
 impl DbField {
-    fn raw(&self) -> c_ulong {
+    pub fn raw(&self) -> i32 {
         match self {
             DbField::String => sys::DBF_STRING,
             DbField::Short => sys::DBF_SHORT,
@@ -41,7 +42,7 @@ pub enum DbRequest {
 }
 
 impl DbRequest {
-    fn raw(&self) -> c_ulong {
+    pub fn raw(&self) -> i32 {
         match self {
             DbRequest::Base(dbf) => match dbf {
                 DbField::String => sys::DBR_STRING,
@@ -113,7 +114,7 @@ pub enum Dbe {
 }
 
 impl Dbe {
-    fn raw(&self) -> c_ulong {
+    pub fn raw(&self) -> i32 {
         match self {
             Dbe::Value => sys::DBE_VALUE,
             Dbe::Archive => sys::DBE_ARCHIVE,
@@ -131,7 +132,7 @@ pub struct AccessRights {
 }
 
 impl AccessRights {
-    fn raw(self) -> sys::ca_access_rights {
+    pub fn raw(self) -> sys::ca_access_rights {
         let mut raw = 0;
         if self.read_access {
             raw |= sys::CA_READ_ACCESS;
