@@ -13,4 +13,4 @@ categories = ["science", "network-programming", "api-bindings", "asynchronous"]
 license = "MIT/Apache-2.0"
 
 [dependencies]
-epics-sys = { path = "../epics-sys" }
+epics-sys = { path = "sys" }

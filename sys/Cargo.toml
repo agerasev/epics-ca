@@ -1,0 +1,20 @@
+[package]
+name = "epics-sys"
+version = "0.0.1"
+edition = "2021"
+links = "ca"
+
+description = "Rust raw FFI bindings for EPICS"
+documentation = "https://docs.rs/epics-sys"
+homepage = "https://github.com/agerasev/epics-sys"
+repository = "https://github.com/agerasev/epics-sys.git"
+readme = "README.md"
+keywords = ["epics"]
+categories = ["science", "api-bindings"]
+license = "MIT/Apache-2.0"
+
+[dependencies]
+libc = "0.2"
+
+[workspace]
+members = ["generator"]

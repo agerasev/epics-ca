@@ -1,0 +1,8 @@
+[package]
+name = "epics-sys-generator"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+bindgen = "0.61.0"
+anyhow = "1.0"
