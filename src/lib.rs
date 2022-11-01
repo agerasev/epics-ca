@@ -4,10 +4,6 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-mod sys {
-    pub use epics_sys::cadef::*;
-}
-
 use crate::error::Error;
 use std::{
     ffi::CStr,

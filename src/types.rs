@@ -1,7 +1,3 @@
-mod sys {
-    pub use epics_sys::{cadef::*, caeventmask::*, db_access::*};
-}
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
     String,

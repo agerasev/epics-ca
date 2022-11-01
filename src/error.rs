@@ -1,7 +1,3 @@
-mod sys {
-    pub use epics_sys::caerr::*;
-}
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ErrorKind {
     Allocmem,

@@ -1,5 +1,5 @@
 [package]
-name = "epics-sys-generator"
+name = "epics-ca-sys-generator"
 version = "0.0.0"
 edition = "2021"
 
