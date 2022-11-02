@@ -112,7 +112,7 @@ pub enum epicsBoolean {
     epicsFalse = 0,
     epicsTrue = 1,
 }
-pub type epicsInt8 = libc::c_char;
+pub type epicsInt8 = libc::c_schar;
 pub type epicsUInt8 = libc::c_uchar;
 pub type epicsInt16 = libc::c_short;
 pub type epicsUInt16 = libc::c_ushort;
@@ -749,8 +749,8 @@ extern "C" {
     ) -> libc::c_int;
     pub fn ca_clear_subscription(eventID: evid) -> libc::c_int;
     pub fn ca_evid_to_chid(id: evid) -> chid;
-    pub fn ca_pend_event(timeOut: ca_real) -> libc::c_int;
-    pub fn ca_pend_io(timeOut: ca_real) -> libc::c_int;
+    pub fn ca_pend_event(timeout: ca_real) -> libc::c_int;
+    pub fn ca_pend_io(timeout: ca_real) -> libc::c_int;
     pub fn ca_pend(timeout: ca_real, early: libc::c_int) -> libc::c_int;
     pub fn ca_test_io() -> libc::c_int;
     pub fn ca_flush_io() -> libc::c_int;
