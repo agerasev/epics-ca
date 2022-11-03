@@ -8,6 +8,9 @@
 mod generated;
 pub use generated::*;
 
+#[cfg(all(test, feature = "test"))]
+mod test;
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct epicsThreadOSD {

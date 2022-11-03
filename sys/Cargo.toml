@@ -8,5 +8,11 @@ description = "Raw bindings for EPICS Channel Access library"
 keywords = ["epics"]
 categories = ["science", "api-bindings"]
 
+[features]
+test = ["cc"]
+
 [dependencies]
 libc = "0.2"
+
+[build-dependencies]
+cc = { version = "1.0", optional = true }
