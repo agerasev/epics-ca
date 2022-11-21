@@ -1,0 +1,9 @@
+record(ai, "ca:test:ai")
+{
+	field(SCAN, "Passive")
+	field(INP, "ca:test:ao")
+}
+record(ao, "ca:test:ao")
+{
+	field(FLNK, "ca:test:ai")
+}
