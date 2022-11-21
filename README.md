@@ -14,6 +14,16 @@ During build you need to provide a path to a static library (`libca.a` or `ca.li
 At run time the crate also needs a dynamic library (`libca.so` or `ca.dll`).
 You need to provide path to its location (e.g. via `LD_LIBRARY_PATH`) or put it where it could be found automatically (e.g. along with executable).
 
+## Testing
+
+To run tests you need to have dummy IOC running (located in `ioc` dir):
+
++ Set appropriate `EPICS_BASE` path in `configure/RELEASE`.
++ Build with `make`.
++ Go to `iocBoot/iocTest/` and run script `st.cmd` and don't stop it.
+
+In separate shell run `cargo test`.
+
 ## License
 
 Licensed under either of

@@ -15,6 +15,7 @@ edition = "2021"
 description = "Client library for EPICS Channel Access protocol"
 keywords = ["epics", "async"]
 categories = ["science", "network-programming", "api-bindings", "asynchronous"]
+exclude = ["/ioc"]
 resolver = "2"
 
 [dependencies]
