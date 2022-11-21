@@ -1,5 +1,5 @@
 use crate::error::Error;
-use std::{ptr::NonNull, time::Duration};
+use std::{marker::PhantomData, ptr::NonNull};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Context {
@@ -14,6 +14,7 @@ impl Context {
             )
         })?;
         let raw = Self::current();
+        Self::detach();
         Ok(Self {
             raw: NonNull::new(raw).unwrap(),
         })
@@ -21,35 +22,69 @@ impl Context {
     pub(crate) fn current() -> *mut sys::ca_client_context {
         unsafe { sys::ca_current_context() }
     }
-    pub(crate) fn attach(&self) {
+    fn attach_unbounded(&self) {
         unsafe { sys::ca_attach_context(self.raw.as_ptr()) };
     }
-    pub(crate) fn is_attached(&self) -> bool {
-        Self::current() == self.raw.as_ptr()
-    }
-    pub(crate) fn detach() {
-        debug_assert!(!Self::current().is_null());
+    fn detach() {
         unsafe { sys::ca_detach_context() };
+    }
+    /// Panics if some context (including itself) already attached to this thread.
+    pub fn attach(&self) -> AttachGuard<'_> {
+        AttachGuard::new(self)
     }
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
-            self.attach();
+            self.attach_unbounded();
             sys::ca_context_destroy();
         }
     }
 }
 
-/// Flush I/O to the server.
-pub(crate) fn flush_io(ctx: &Context) -> Result<(), Error> {
-    debug_assert!(ctx.is_attached());
-    Error::try_from_raw(unsafe { sys::ca_flush_io() })
+pub struct AttachGuard<'a> {
+    owner: PhantomData<&'a Context>,
+    /// To make guard non-Send.
+    _unused: [*mut u8; 0],
 }
 
-/// Flush I/O and wait for completion or timeout.
-pub(crate) fn pend_io(ctx: &Context, timeout: Duration) -> Result<(), Error> {
-    debug_assert!(ctx.is_attached());
-    Error::try_from_raw(unsafe { sys::ca_pend_io(timeout.as_secs_f64()) })
+impl<'a> AttachGuard<'a> {
+    fn new(owner: &'a Context) -> Self {
+        assert!(Context::current().is_null());
+        owner.attach_unbounded();
+        Self {
+            owner: PhantomData,
+            _unused: [],
+        }
+    }
+
+    pub(crate) fn flush_io(&mut self) -> Result<(), Error> {
+        Error::try_from_raw(unsafe { sys::ca_flush_io() })
+    }
+}
+
+impl<'a> Drop for AttachGuard<'a> {
+    fn drop(&mut self) {
+        Context::detach();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Context;
+
+    #[test]
+    fn attach() {
+        Context::new().unwrap().attach();
+    }
+
+    #[test]
+    #[should_panic]
+    fn attach_twice() {
+        let ctx = Context::new().unwrap();
+        let guard = ctx.attach();
+        ctx.attach(); // panic here
+        drop(guard);
+    }
 }
