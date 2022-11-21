@@ -1,72 +1,79 @@
 use crate::error::Error;
-use std::{marker::PhantomData, ptr::NonNull};
+use std::ptr::NonNull;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Context {
     raw: NonNull<sys::ca_client_context>,
 }
 
+unsafe impl Send for Context {}
+
 impl Context {
     pub fn new() -> Result<Self, Error> {
-        Error::try_from_raw(unsafe {
+        let prev = Self::current();
+        if !prev.is_null() {
+            Self::detach();
+        }
+        let ret = Error::try_from_raw(unsafe {
             sys::ca_context_create(
                 sys::ca_preemptive_callback_select::ca_enable_preemptive_callback,
             )
-        })?;
-        let raw = Self::current();
-        Self::detach();
-        Ok(Self {
-            raw: NonNull::new(raw).unwrap(),
         })
+        .map(|()| {
+            let raw = Self::current();
+            Self::detach();
+            Self {
+                raw: NonNull::new(raw).unwrap(),
+            }
+        });
+        if let Some(prev) = NonNull::new(prev) {
+            Self::attach(prev);
+        }
+        ret
     }
     pub(crate) fn current() -> *mut sys::ca_client_context {
         unsafe { sys::ca_current_context() }
     }
-    fn attach_unbounded(&self) {
-        unsafe { sys::ca_attach_context(self.raw.as_ptr()) };
+    fn attach(raw: NonNull<sys::ca_client_context>) {
+        unsafe { sys::ca_attach_context(raw.as_ptr()) };
     }
     fn detach() {
         unsafe { sys::ca_detach_context() };
     }
-    /// Panics if some context (including itself) already attached to this thread.
-    pub fn attach(&self) -> AttachGuard<'_> {
-        AttachGuard::new(self)
+    pub fn with<F: FnOnce() -> R, R>(&self, f: F) -> R {
+        let prev = Self::current();
+        if prev != self.raw.as_ptr() {
+            if !prev.is_null() {
+                Self::detach();
+            }
+            Self::attach(self.raw);
+        }
+        let ret = f();
+        if prev != self.raw.as_ptr() {
+            Self::detach();
+            if let Some(prev) = NonNull::new(prev) {
+                Self::attach(prev);
+            }
+        }
+        ret
+    }
+
+    pub(crate) fn flush_io(&self) -> Result<(), Error> {
+        self.with(|| Error::try_from_raw(unsafe { sys::ca_flush_io() }))
     }
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
-        unsafe {
-            self.attach_unbounded();
-            sys::ca_context_destroy();
+        let prev = Self::current();
+        if !prev.is_null() {
+            Self::detach();
         }
-    }
-}
-
-pub struct AttachGuard<'a> {
-    owner: PhantomData<&'a Context>,
-    /// To make guard non-Send.
-    _unused: [*mut u8; 0],
-}
-
-impl<'a> AttachGuard<'a> {
-    fn new(owner: &'a Context) -> Self {
-        assert!(Context::current().is_null());
-        owner.attach_unbounded();
-        Self {
-            owner: PhantomData,
-            _unused: [],
+        Self::attach(self.raw);
+        unsafe { sys::ca_context_destroy() };
+        if let Some(prev) = NonNull::new(prev) {
+            Self::attach(prev);
         }
-    }
-
-    pub(crate) fn flush_io(&mut self) -> Result<(), Error> {
-        Error::try_from_raw(unsafe { sys::ca_flush_io() })
-    }
-}
-
-impl<'a> Drop for AttachGuard<'a> {
-    fn drop(&mut self) {
-        Context::detach();
     }
 }
 
@@ -75,16 +82,56 @@ mod tests {
     use super::Context;
 
     #[test]
-    fn attach() {
-        Context::new().unwrap().attach();
+    fn new() {
+        Context::new().unwrap();
     }
 
     #[test]
-    #[should_panic]
-    fn attach_twice() {
+    fn attach() {
+        assert!(Context::current().is_null());
         let ctx = Context::new().unwrap();
-        let guard = ctx.attach();
-        ctx.attach(); // panic here
-        drop(guard);
+        assert!(Context::current().is_null());
+        ctx.with(|| {
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+        });
+        assert!(Context::current().is_null());
+    }
+
+    #[test]
+    fn reattach_same() {
+        assert!(Context::current().is_null());
+        let ctx = Context::new().unwrap();
+        assert!(Context::current().is_null());
+        ctx.with(|| {
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+            ctx.with(|| {
+                assert_eq!(Context::current(), ctx.raw.as_ptr());
+            });
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+        });
+        assert!(Context::current().is_null());
+    }
+
+    #[test]
+    fn reattach_different() {
+        assert!(Context::current().is_null());
+        let ctx = Context::new().unwrap();
+        assert!(Context::current().is_null());
+        ctx.with(|| {
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+            let other_ctx = Context::new().unwrap();
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+            other_ctx.with(|| {
+                assert_eq!(Context::current(), other_ctx.raw.as_ptr());
+                ctx.with(|| {
+                    assert_eq!(Context::current(), ctx.raw.as_ptr());
+                });
+                assert_eq!(Context::current(), other_ctx.raw.as_ptr());
+            });
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+            drop(other_ctx);
+            assert_eq!(Context::current(), ctx.raw.as_ptr());
+        });
+        assert!(Context::current().is_null());
     }
 }
