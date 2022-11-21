@@ -1,6 +1,6 @@
-use crate::Context;
+use crate::context::Context;
 
 #[test]
 fn context() {
-    Context::new().unwrap().attach();
+    Context::new().unwrap();
 }
