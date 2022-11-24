@@ -1,4 +1,4 @@
-use crate::{context::Context, error::Error, traits::Ptr};
+use crate::{context::Context, error::Error, traits::Ptr, types::DbField};
 use futures::task::AtomicWaker;
 use std::{
     ffi::{c_void, CStr},
@@ -37,8 +37,29 @@ impl Channel {
     pub(crate) fn user_data(&self) -> *mut c_void {
         unsafe { sys::ca_puser(self.raw.as_ptr()) }
     }
+
     pub(crate) fn set_user_data(&mut self, ptr: *mut c_void) {
         unsafe { sys::ca_set_puser(self.raw.as_ptr(), ptr) };
+    }
+
+    pub fn name(&self) -> &CStr {
+        unsafe { CStr::from_ptr(sys::ca_name(self.raw())) }
+    }
+
+    pub fn field_type(&self) -> Result<DbField, Error> {
+        let raw = unsafe { sys::ca_field_type(self.raw()) } as i32;
+        if raw == sys::TYPENOTCONN {
+            return Err(Error::try_from_raw(sys::ECA_DISCONNCHID).unwrap_err());
+        }
+        DbField::try_from_raw(raw).ok_or_else(|| Error::try_from_raw(sys::ECA_BADTYPE).unwrap_err())
+    }
+
+    pub fn element_count(&self) -> Result<usize, Error> {
+        let count = unsafe { sys::ca_element_count(self.raw()) } as usize;
+        if count == 0 {
+            return Err(Error::try_from_raw(sys::ECA_DISCONNCHID).unwrap_err());
+        }
+        Ok(count)
     }
 }
 

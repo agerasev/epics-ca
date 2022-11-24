@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
     String,
-    Short,
+    // Short, // Alias to Int
     Int,
     Float,
     Enum,
@@ -11,10 +11,24 @@ pub enum DbField {
 }
 
 impl DbField {
+    pub fn try_from_raw(raw: i32) -> Option<Self> {
+        match raw {
+            sys::DBF_STRING => Some(DbField::String),
+            // sys::DBF_SHORT => Some(DbField::Short),
+            sys::DBF_INT => Some(DbField::Int),
+            sys::DBF_FLOAT => Some(DbField::Float),
+            sys::DBF_ENUM => Some(DbField::Enum),
+            sys::DBF_CHAR => Some(DbField::Char),
+            sys::DBF_LONG => Some(DbField::Long),
+            sys::DBF_DOUBLE => Some(DbField::Double),
+            _ => None,
+        }
+    }
+
     pub fn raw(&self) -> i32 {
         match self {
             DbField::String => sys::DBF_STRING,
-            DbField::Short => sys::DBF_SHORT,
+            // DbField::Short => sys::DBF_SHORT,
             DbField::Int => sys::DBF_INT,
             DbField::Float => sys::DBF_FLOAT,
             DbField::Enum => sys::DBF_ENUM,
@@ -43,7 +57,7 @@ impl DbRequest {
             DbRequest::Base(dbf) => match dbf {
                 DbField::String => sys::DBR_STRING,
                 DbField::Int => sys::DBR_INT,
-                DbField::Short => sys::DBR_SHORT,
+                // DbField::Short => sys::DBR_SHORT,
                 DbField::Float => sys::DBR_FLOAT,
                 DbField::Enum => sys::DBR_ENUM,
                 DbField::Char => sys::DBR_CHAR,
@@ -52,7 +66,7 @@ impl DbRequest {
             },
             DbRequest::Sts(dbf) => match dbf {
                 DbField::String => sys::DBR_STS_STRING,
-                DbField::Short => sys::DBR_STS_SHORT,
+                // DbField::Short => sys::DBR_STS_SHORT,
                 DbField::Int => sys::DBR_STS_INT,
                 DbField::Float => sys::DBR_STS_FLOAT,
                 DbField::Enum => sys::DBR_STS_ENUM,
@@ -62,8 +76,8 @@ impl DbRequest {
             },
             DbRequest::Time(dbf) => match dbf {
                 DbField::String => sys::DBR_TIME_STRING,
+                // DbField::Short => sys::DBR_TIME_SHORT,
                 DbField::Int => sys::DBR_TIME_INT,
-                DbField::Short => sys::DBR_TIME_SHORT,
                 DbField::Float => sys::DBR_TIME_FLOAT,
                 DbField::Enum => sys::DBR_TIME_ENUM,
                 DbField::Char => sys::DBR_TIME_CHAR,
@@ -72,7 +86,7 @@ impl DbRequest {
             },
             DbRequest::Gr(dbf) => match dbf {
                 DbField::String => sys::DBR_GR_STRING,
-                DbField::Short => sys::DBR_GR_SHORT,
+                // DbField::Short => sys::DBR_GR_SHORT,
                 DbField::Int => sys::DBR_GR_INT,
                 DbField::Float => sys::DBR_GR_FLOAT,
                 DbField::Enum => sys::DBR_GR_ENUM,
@@ -82,7 +96,7 @@ impl DbRequest {
             },
             DbRequest::Ctrl(dbf) => match dbf {
                 DbField::String => sys::DBR_CTRL_STRING,
-                DbField::Short => sys::DBR_CTRL_SHORT,
+                // DbField::Short => sys::DBR_CTRL_SHORT,
                 DbField::Int => sys::DBR_CTRL_INT,
                 DbField::Float => sys::DBR_CTRL_FLOAT,
                 DbField::Enum => sys::DBR_CTRL_ENUM,
