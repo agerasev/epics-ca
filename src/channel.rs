@@ -1,9 +1,16 @@
-use crate::{context::Context, error::Error, traits::Ptr, types::DbField};
+use crate::{
+    context::Context,
+    error::Error,
+    traits::{Downcast, Ptr},
+    types::DbField,
+};
 use futures::task::AtomicWaker;
 use std::{
     ffi::{c_void, CStr},
     future::Future,
+    marker::PhantomData,
     mem,
+    ops::{Deref, DerefMut},
     pin::Pin,
     ptr::{self, NonNull},
     sync::{
@@ -14,14 +21,14 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct Channel {
+pub struct AnyChannel {
     ctx: Arc<Context>,
     raw: <sys::chanId as Ptr>::NonNull,
 }
 
-unsafe impl Send for Channel where Context: Send {}
+unsafe impl Send for AnyChannel where Context: Send {}
 
-impl Channel {
+impl AnyChannel {
     pub fn connect(ctx: Arc<Context>, name: &CStr) -> Connect {
         Connect::new(ctx, name)
     }
@@ -63,7 +70,7 @@ impl Channel {
     }
 }
 
-impl Drop for Channel {
+impl Drop for AnyChannel {
     fn drop(&mut self) {
         self.ctx
             .with(|| unsafe { sys::ca_clear_channel(self.raw()) });
@@ -72,7 +79,7 @@ impl Drop for Channel {
 
 enum ConnectStage<'a> {
     Init { name: &'a CStr },
-    Connecting { channel: Channel },
+    Connecting { channel: AnyChannel },
     Done,
 }
 
@@ -101,7 +108,7 @@ impl<'a> Connect<'a> {
 }
 
 impl<'a> Future for Connect<'a> {
-    type Output = Result<Channel, Error>;
+    type Output = Result<AnyChannel, Error>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Cx<'_>) -> Poll<Self::Output> {
         self.shared.waker.register(cx.waker());
         let stage = match mem::replace(&mut self.stage, ConnectStage::Done) {
@@ -120,7 +127,7 @@ impl<'a> Future for Connect<'a> {
                     .and_then(|()| self.ctx.flush_io())
                 })?;
                 ConnectStage::Connecting {
-                    channel: Channel {
+                    channel: AnyChannel {
                         ctx: self.ctx.clone(),
                         raw: NonNull::new(raw).unwrap(),
                     },
@@ -168,9 +175,34 @@ impl<'a> Connect<'a> {
     }
 }
 
+#[repr(transparent)]
+struct Channel<T: Copy> {
+    base: AnyChannel,
+    _p: PhantomData<T>,
+}
+
+impl<T: Copy> Deref for Channel<T> {
+    type Target = AnyChannel;
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl<T: Copy> DerefMut for Channel<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
+}
+
+impl<T: Copy> Channel<T> {
+    pub fn get(&mut self) -> Result<T, Error> {
+        unimplemented!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Channel, Context};
+    use super::{AnyChannel, Context};
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
@@ -180,14 +212,16 @@ mod tests {
     #[serial]
     async fn connect() {
         let ctx = Arc::new(Context::new().unwrap());
-        Channel::connect(ctx, c_str!("ca:test:ai")).await.unwrap();
+        AnyChannel::connect(ctx, c_str!("ca:test:ai"))
+            .await
+            .unwrap();
     }
 
     #[async_test]
     #[serial]
     async fn user_data() {
         let ctx = Arc::new(Context::new().unwrap());
-        let mut channel = Channel::connect(ctx.clone(), c_str!("ca:test:ai"))
+        let mut channel = AnyChannel::connect(ctx.clone(), c_str!("ca:test:ai"))
             .await
             .unwrap();
 
