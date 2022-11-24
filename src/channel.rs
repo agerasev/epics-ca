@@ -68,6 +68,18 @@ impl AnyChannel {
         }
         Ok(count)
     }
+
+    pub fn host_name(&self) -> Result<&CStr, Error> {
+        const DISCONN_HOST: &CStr =
+            unsafe { CStr::from_bytes_with_nul_unchecked(b"<disconnected>\0") };
+
+        let str = unsafe { CStr::from_ptr(sys::ca_host_name(self.raw())) };
+        if str != DISCONN_HOST {
+            Ok(str)
+        } else {
+            Err(error::DISCONN)
+        }
+    }
 }
 
 impl Drop for AnyChannel {
@@ -260,8 +272,7 @@ impl<T: Copy> Channel<T> {
 
 #[cfg(test)]
 mod tests {
-
-    use super::{AnyChannel, Channel, Context, Downcast};
+    use super::{AnyChannel, Channel, Context, DbField, Downcast};
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
@@ -274,6 +285,18 @@ mod tests {
         AnyChannel::connect(ctx, c_str!("ca:test:ai"))
             .await
             .unwrap();
+    }
+
+    #[async_test]
+    #[serial]
+    async fn properties() {
+        let name = c_str!("ca:test:ai");
+        let chan = AnyChannel::connect(Arc::new(Context::new().unwrap()), name)
+            .await
+            .unwrap();
+        assert_eq!(chan.name(), name);
+        assert_eq!(chan.field_type().unwrap(), DbField::Double);
+        assert_eq!(chan.element_count().unwrap(), 1);
     }
 
     #[async_test]
