@@ -1,7 +1,7 @@
 use crate::{context::Context, error::Error, traits::Ptr};
 use futures::task::AtomicWaker;
 use std::{
-    ffi::{c_void, CStr, CString},
+    ffi::{c_void, CStr},
     future::Future,
     mem,
     pin::Pin,
@@ -19,7 +19,7 @@ pub struct Channel {
     raw: <sys::chanId as Ptr>::NonNull,
 }
 
-unsafe impl Send for Channel {}
+unsafe impl Send for Channel where Context: Send {}
 
 impl Channel {
     pub fn connect(ctx: Arc<Context>, name: &CStr) -> Connect {
@@ -49,8 +49,8 @@ impl Drop for Channel {
     }
 }
 
-enum ConnectStage {
-    Init { name: CString },
+enum ConnectStage<'a> {
+    Init { name: &'a CStr },
     Connecting { channel: Channel },
     Done,
 }
@@ -60,19 +60,17 @@ struct ConnectShared {
     op: AtomicI32,
 }
 
-pub struct Connect {
+pub struct Connect<'a> {
     ctx: Arc<Context>,
-    stage: ConnectStage,
+    stage: ConnectStage<'a>,
     shared: ConnectShared,
 }
 
-impl Connect {
-    fn new(ctx: Arc<Context>, name: &CStr) -> Self {
+impl<'a> Connect<'a> {
+    fn new(ctx: Arc<Context>, name: &'a CStr) -> Self {
         Connect {
             ctx,
-            stage: ConnectStage::Init {
-                name: CString::from(name),
-            },
+            stage: ConnectStage::Init { name },
             shared: ConnectShared {
                 waker: AtomicWaker::new(),
                 op: AtomicI32::new(-1),
@@ -81,7 +79,7 @@ impl Connect {
     }
 }
 
-impl Future for Connect {
+impl<'a> Future for Connect<'a> {
     type Output = Result<Channel, Error>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Cx<'_>) -> Poll<Self::Output> {
         self.shared.waker.register(cx.waker());
@@ -132,7 +130,7 @@ impl Future for Connect {
     }
 }
 
-impl Drop for Connect {
+impl<'a> Drop for Connect<'a> {
     fn drop(&mut self) {
         if let ConnectStage::Connecting { channel } = &mut self.stage {
             channel.set_user_data(ptr::null_mut());
@@ -140,7 +138,7 @@ impl Drop for Connect {
     }
 }
 
-impl Connect {
+impl<'a> Connect<'a> {
     unsafe extern "C" fn callback(args: sys::connection_handler_args) {
         if let Some(user_data) = (sys::ca_puser(args.chid) as *const ConnectShared).as_ref() {
             user_data.op.store(args.op as i32, Ordering::Release);
