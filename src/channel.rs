@@ -191,34 +191,64 @@ impl<T: Copy> DerefMut for Channel<T> {
     }
 }
 
-unsafe impl Downcast<Channel<i8>> for AnyChannel {
+impl Downcast<Channel<i8>> for AnyChannel {
     fn is_instance_of(&self) -> bool {
         matches!(self.field_type(), Ok(DbField::Char)) && matches!(self.element_count(), Ok(1))
     }
+    fn downcast_unchecked(self) -> Channel<i8> {
+        Channel {
+            base: self,
+            _p: PhantomData,
+        }
+    }
 }
 
-unsafe impl Downcast<Channel<i16>> for AnyChannel {
+impl Downcast<Channel<i16>> for AnyChannel {
     fn is_instance_of(&self) -> bool {
         matches!(self.field_type(), Ok(DbField::Short | DbField::Enum))
             && matches!(self.element_count(), Ok(1))
     }
+    fn downcast_unchecked(self) -> Channel<i16> {
+        Channel {
+            base: self,
+            _p: PhantomData,
+        }
+    }
 }
 
-unsafe impl Downcast<Channel<i32>> for AnyChannel {
+impl Downcast<Channel<i32>> for AnyChannel {
     fn is_instance_of(&self) -> bool {
         matches!(self.field_type(), Ok(DbField::Long)) && matches!(self.element_count(), Ok(1))
     }
-}
-
-unsafe impl Downcast<Channel<f32>> for AnyChannel {
-    fn is_instance_of(&self) -> bool {
-        matches!(self.field_type(), Ok(DbField::Float)) && matches!(self.element_count(), Ok(1))
+    fn downcast_unchecked(self) -> Channel<i32> {
+        Channel {
+            base: self,
+            _p: PhantomData,
+        }
     }
 }
 
-unsafe impl Downcast<Channel<f64>> for AnyChannel {
+impl Downcast<Channel<f32>> for AnyChannel {
+    fn is_instance_of(&self) -> bool {
+        matches!(self.field_type(), Ok(DbField::Float)) && matches!(self.element_count(), Ok(1))
+    }
+    fn downcast_unchecked(self) -> Channel<f32> {
+        Channel {
+            base: self,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl Downcast<Channel<f64>> for AnyChannel {
     fn is_instance_of(&self) -> bool {
         matches!(self.field_type(), Ok(DbField::Double)) && matches!(self.element_count(), Ok(1))
+    }
+    fn downcast_unchecked(self) -> Channel<f64> {
+        Channel {
+            base: self,
+            _p: PhantomData,
+        }
     }
 }
 
