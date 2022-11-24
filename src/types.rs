@@ -1,8 +1,8 @@
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
     String,
-    // Short, // Alias to Int
-    Int,
+    Short,
+    // Int, // Alias to Short
     Float,
     Enum,
     Char,
@@ -14,8 +14,8 @@ impl DbField {
     pub fn try_from_raw(raw: i32) -> Option<Self> {
         match raw {
             sys::DBF_STRING => Some(DbField::String),
-            // sys::DBF_SHORT => Some(DbField::Short),
-            sys::DBF_INT => Some(DbField::Int),
+            sys::DBF_SHORT => Some(DbField::Short),
+            // sys::DBF_INT => Some(DbField::Int),
             sys::DBF_FLOAT => Some(DbField::Float),
             sys::DBF_ENUM => Some(DbField::Enum),
             sys::DBF_CHAR => Some(DbField::Char),
@@ -28,8 +28,8 @@ impl DbField {
     pub fn raw(&self) -> i32 {
         match self {
             DbField::String => sys::DBF_STRING,
-            // DbField::Short => sys::DBF_SHORT,
-            DbField::Int => sys::DBF_INT,
+            DbField::Short => sys::DBF_SHORT,
+            // DbField::Int => sys::DBF_INT,
             DbField::Float => sys::DBF_FLOAT,
             DbField::Enum => sys::DBF_ENUM,
             DbField::Char => sys::DBF_CHAR,
@@ -56,8 +56,8 @@ impl DbRequest {
         match self {
             DbRequest::Base(dbf) => match dbf {
                 DbField::String => sys::DBR_STRING,
-                DbField::Int => sys::DBR_INT,
-                // DbField::Short => sys::DBR_SHORT,
+                DbField::Short => sys::DBR_SHORT,
+                // DbField::Int => sys::DBR_INT,
                 DbField::Float => sys::DBR_FLOAT,
                 DbField::Enum => sys::DBR_ENUM,
                 DbField::Char => sys::DBR_CHAR,
@@ -66,8 +66,8 @@ impl DbRequest {
             },
             DbRequest::Sts(dbf) => match dbf {
                 DbField::String => sys::DBR_STS_STRING,
-                // DbField::Short => sys::DBR_STS_SHORT,
-                DbField::Int => sys::DBR_STS_INT,
+                DbField::Short => sys::DBR_STS_SHORT,
+                // DbField::Int => sys::DBR_STS_INT,
                 DbField::Float => sys::DBR_STS_FLOAT,
                 DbField::Enum => sys::DBR_STS_ENUM,
                 DbField::Char => sys::DBR_STS_CHAR,
@@ -76,8 +76,8 @@ impl DbRequest {
             },
             DbRequest::Time(dbf) => match dbf {
                 DbField::String => sys::DBR_TIME_STRING,
-                // DbField::Short => sys::DBR_TIME_SHORT,
-                DbField::Int => sys::DBR_TIME_INT,
+                DbField::Short => sys::DBR_TIME_SHORT,
+                // DbField::Int => sys::DBR_TIME_INT,
                 DbField::Float => sys::DBR_TIME_FLOAT,
                 DbField::Enum => sys::DBR_TIME_ENUM,
                 DbField::Char => sys::DBR_TIME_CHAR,
@@ -86,8 +86,8 @@ impl DbRequest {
             },
             DbRequest::Gr(dbf) => match dbf {
                 DbField::String => sys::DBR_GR_STRING,
-                // DbField::Short => sys::DBR_GR_SHORT,
-                DbField::Int => sys::DBR_GR_INT,
+                DbField::Short => sys::DBR_GR_SHORT,
+                // DbField::Int => sys::DBR_GR_INT,
                 DbField::Float => sys::DBR_GR_FLOAT,
                 DbField::Enum => sys::DBR_GR_ENUM,
                 DbField::Char => sys::DBR_GR_CHAR,
@@ -96,8 +96,8 @@ impl DbRequest {
             },
             DbRequest::Ctrl(dbf) => match dbf {
                 DbField::String => sys::DBR_CTRL_STRING,
-                // DbField::Short => sys::DBR_CTRL_SHORT,
-                DbField::Int => sys::DBR_CTRL_INT,
+                DbField::Short => sys::DBR_CTRL_SHORT,
+                // DbField::Int => sys::DBR_CTRL_INT,
                 DbField::Float => sys::DBR_CTRL_FLOAT,
                 DbField::Enum => sys::DBR_CTRL_ENUM,
                 DbField::Char => sys::DBR_CTRL_CHAR,
@@ -151,5 +151,25 @@ impl AccessRights {
             raw |= sys::CA_WRITE_ACCESS;
         }
         raw
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DbField;
+
+    fn dbf_size(dbf: DbField) -> usize {
+        unsafe { *(sys::dbr_size.as_ptr().offset(dbf.raw() as isize)) as usize }
+    }
+
+    #[test]
+    fn dbr_sizes() {
+        assert_eq!(dbf_size(DbField::String), sys::MAX_STRING_SIZE as usize);
+        assert_eq!(dbf_size(DbField::Short), 2);
+        assert_eq!(dbf_size(DbField::Float), 4);
+        assert_eq!(dbf_size(DbField::Enum), 2);
+        assert_eq!(dbf_size(DbField::Char), 1);
+        assert_eq!(dbf_size(DbField::Long), 4);
+        assert_eq!(dbf_size(DbField::Double), 8);
     }
 }

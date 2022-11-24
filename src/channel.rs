@@ -191,6 +191,37 @@ impl<T: Copy> DerefMut for Channel<T> {
     }
 }
 
+unsafe impl Downcast<Channel<i8>> for AnyChannel {
+    fn is_instance_of(&self) -> bool {
+        matches!(self.field_type(), Ok(DbField::Char)) && matches!(self.element_count(), Ok(1))
+    }
+}
+
+unsafe impl Downcast<Channel<i16>> for AnyChannel {
+    fn is_instance_of(&self) -> bool {
+        matches!(self.field_type(), Ok(DbField::Short | DbField::Enum))
+            && matches!(self.element_count(), Ok(1))
+    }
+}
+
+unsafe impl Downcast<Channel<i32>> for AnyChannel {
+    fn is_instance_of(&self) -> bool {
+        matches!(self.field_type(), Ok(DbField::Long)) && matches!(self.element_count(), Ok(1))
+    }
+}
+
+unsafe impl Downcast<Channel<f32>> for AnyChannel {
+    fn is_instance_of(&self) -> bool {
+        matches!(self.field_type(), Ok(DbField::Float)) && matches!(self.element_count(), Ok(1))
+    }
+}
+
+unsafe impl Downcast<Channel<f64>> for AnyChannel {
+    fn is_instance_of(&self) -> bool {
+        matches!(self.field_type(), Ok(DbField::Double)) && matches!(self.element_count(), Ok(1))
+    }
+}
+
 impl<T: Copy> Channel<T> {
     pub fn get(&mut self) -> Result<T, Error> {
         unimplemented!()
@@ -199,7 +230,8 @@ impl<T: Copy> Channel<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AnyChannel, Context};
+
+    use super::{AnyChannel, Channel, Context, Downcast};
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
@@ -232,5 +264,15 @@ mod tests {
         });
         channel.set_user_data(ptr::null_mut());
         assert!(channel.user_data().is_null());
+    }
+
+    #[async_test]
+    #[serial]
+    async fn downcast() {
+        let ctx = Arc::new(Context::new().unwrap());
+        let any = AnyChannel::connect(ctx, c_str!("ca:test:ai"))
+            .await
+            .unwrap();
+        let _: Channel<f64> = any.downcast().unwrap();
     }
 }
