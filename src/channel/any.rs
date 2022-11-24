@@ -4,7 +4,7 @@ use crate::{
     traits::Ptr,
     types::DbField,
 };
-use futures::task::AtomicWaker;
+use futures::{future::FusedFuture, task::AtomicWaker};
 use std::{
     ffi::{c_void, CStr},
     future::Future,
@@ -165,6 +165,12 @@ impl<'a> Future for Connect<'a> {
     }
 }
 
+impl<'a> FusedFuture for Connect<'a> {
+    fn is_terminated(&self) -> bool {
+        matches!(self.stage, ConnectStage::Done)
+    }
+}
+
 impl<'a> Drop for Connect<'a> {
     fn drop(&mut self) {
         if let ConnectStage::Connecting { channel } = &mut self.stage {
@@ -185,10 +191,11 @@ impl<'a> Connect<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{types::DbField, AnyChannel, Context};
-    use async_std::test as async_test;
+    use async_std::{task::sleep, test as async_test};
     use c_str_macro::c_str;
+    use futures::{select, FutureExt};
     use serial_test::serial;
-    use std::{ptr, sync::Arc};
+    use std::{ptr, sync::Arc, time::Duration};
 
     #[async_test]
     #[serial]
@@ -197,6 +204,15 @@ mod tests {
         AnyChannel::connect(ctx, c_str!("ca:test:ai"))
             .await
             .unwrap();
+    }
+
+    #[async_test]
+    async fn connect_nonexistent() {
+        let ctx = Arc::new(Context::new().unwrap());
+        select! {
+            _ = AnyChannel::connect(ctx, c_str!("__nonexistent__")) => panic!(),
+            _ = sleep(Duration::from_millis(100)).fuse() => (),
+        }
     }
 
     #[async_test]
