@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{result_from_raw, Error};
 use std::ptr::NonNull;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -14,7 +14,7 @@ impl Context {
         if !prev.is_null() {
             Self::detach();
         }
-        let ret = Error::try_from_raw(unsafe {
+        let ret = result_from_raw(unsafe {
             sys::ca_context_create(
                 sys::ca_preemptive_callback_select::ca_enable_preemptive_callback,
             )
@@ -59,7 +59,7 @@ impl Context {
     }
 
     pub(crate) fn flush_io(&self) -> Result<(), Error> {
-        self.with(|| Error::try_from_raw(unsafe { sys::ca_flush_io() }))
+        self.with(|| result_from_raw(unsafe { sys::ca_flush_io() }))
     }
 }
 

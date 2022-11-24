@@ -1,6 +1,6 @@
 use crate::{
     context::Context,
-    error::Error,
+    error::{self, result_from_raw, Error},
     traits::{Downcast, Ptr},
     types::DbField,
 };
@@ -56,15 +56,15 @@ impl AnyChannel {
     pub fn field_type(&self) -> Result<DbField, Error> {
         let raw = unsafe { sys::ca_field_type(self.raw()) } as i32;
         if raw == sys::TYPENOTCONN {
-            return Err(Error::try_from_raw(sys::ECA_DISCONNCHID).unwrap_err());
+            return Err(error::DISCONN);
         }
-        DbField::try_from_raw(raw).ok_or_else(|| Error::try_from_raw(sys::ECA_BADTYPE).unwrap_err())
+        DbField::try_from_raw(raw).ok_or(error::BADTYPE)
     }
 
     pub fn element_count(&self) -> Result<usize, Error> {
         let count = unsafe { sys::ca_element_count(self.raw()) } as usize;
         if count == 0 {
-            return Err(Error::try_from_raw(sys::ECA_DISCONNCHID).unwrap_err());
+            return Err(error::DISCONN);
         }
         Ok(count)
     }
@@ -115,7 +115,7 @@ impl<'a> Future for Connect<'a> {
             ConnectStage::Init { name } => {
                 let mut raw: sys::chanId = ptr::null_mut();
                 self.ctx.with(|| {
-                    Error::try_from_raw(unsafe {
+                    result_from_raw(unsafe {
                         sys::ca_create_channel(
                             name.as_ptr(),
                             Some(Connect::callback),
@@ -141,10 +141,7 @@ impl<'a> Future for Connect<'a> {
                             channel.set_user_data(ptr::null_mut());
                             match other {
                                 sys::CA_OP_CONN_UP => Poll::Ready(Ok(channel)),
-                                sys::CA_OP_CONN_DOWN => Poll::Ready(Err(Error::try_from_raw(
-                                    sys::ECA_DISCONNCHID,
-                                )
-                                .unwrap_err())),
+                                sys::CA_OP_CONN_DOWN => Poll::Ready(Err(error::DISCONN)),
                                 _ => unreachable!(),
                             }
                         };
