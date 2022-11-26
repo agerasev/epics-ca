@@ -1,8 +1,9 @@
+use super::{Channel, Type};
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
-    traits::Ptr,
     types::DbField,
+    utils::Ptr,
 };
 use futures::{future::FusedFuture, task::AtomicWaker};
 use std::{
@@ -42,7 +43,6 @@ impl AnyChannel {
     pub(crate) fn user_data(&self) -> *mut c_void {
         unsafe { sys::ca_puser(self.raw.as_ptr()) }
     }
-
     pub(crate) fn set_user_data(&mut self, ptr: *mut c_void) {
         unsafe { sys::ca_set_puser(self.raw.as_ptr(), ptr) };
     }
@@ -50,7 +50,6 @@ impl AnyChannel {
     pub fn name(&self) -> &CStr {
         unsafe { CStr::from_ptr(sys::ca_name(self.raw())) }
     }
-
     pub fn field_type(&self) -> Result<DbField, Error> {
         let raw = unsafe { sys::ca_field_type(self.raw()) } as i32;
         if raw == sys::TYPENOTCONN {
@@ -58,7 +57,6 @@ impl AnyChannel {
         }
         DbField::try_from_raw(raw).ok_or(error::BADTYPE)
     }
-
     pub fn element_count(&self) -> Result<usize, Error> {
         let count = unsafe { sys::ca_element_count(self.raw()) } as usize;
         if count == 0 {
@@ -185,6 +183,30 @@ impl<'a> Connect<'a> {
             user_data.op.store(args.op as i32, Ordering::Release);
             user_data.waker.wake();
         }
+    }
+}
+
+impl AnyChannel {
+    fn match_type<T: Type>(&self) -> Result<(), Error> {
+        if T::matches(self.field_type()?, self.element_count()?) {
+            Ok(())
+        } else {
+            Err(error::BADTYPE)
+        }
+    }
+    pub fn into_typed<T: Type>(self) -> Result<Channel<T>, (Error, Self)> {
+        match self.match_type::<T>() {
+            Ok(()) => Ok(Channel::from_any_unchecked(self)),
+            Err(err) => Err((err, self)),
+        }
+    }
+    pub fn typed_ref<T: Type>(&self) -> Result<&Channel<T>, Error> {
+        self.match_type::<T>()
+            .map(|()| Channel::from_any_ref_unchecked(self))
+    }
+    pub fn typed_mut<T: Type>(&mut self) -> Result<&mut Channel<T>, Error> {
+        self.match_type::<T>()
+            .map(|()| Channel::from_any_mut_unchecked(self))
     }
 }
 

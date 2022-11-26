@@ -1,7 +1,7 @@
 use super::AnyChannel;
-use crate::{error::Error, traits::Downcast, types::DbField};
+use crate::{error::Error, types::DbField};
 use std::{
-    ffi::CStr,
+    ffi::{CStr, CString},
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -12,16 +12,23 @@ pub struct Channel<T: ?Sized> {
     _p: PhantomData<T>,
 }
 
-impl<T: Copy> Channel<T> {
-    fn foo() {}
-}
+impl<T> Channel<T> {
+    pub(crate) fn from_any_unchecked(base: AnyChannel) -> Self {
+        Self {
+            base,
+            _p: PhantomData,
+        }
+    }
+    pub(crate) fn from_any_ref_unchecked(base: &AnyChannel) -> &Self {
+        unsafe { &*(base as *const _ as *const Self) }
+    }
+    pub(crate) fn from_any_mut_unchecked(base: &mut AnyChannel) -> &mut Self {
+        unsafe { &mut *(base as *mut _ as *mut Self) }
+    }
 
-impl<T: Copy> Channel<[T]> {
-    fn foo() {}
-}
-
-impl Channel<CStr> {
-    fn foo() {}
+    pub fn into_any(self) -> AnyChannel {
+        self.base
+    }
 }
 
 impl<T> Deref for Channel<T> {
@@ -30,53 +37,106 @@ impl<T> Deref for Channel<T> {
         &self.base
     }
 }
-
 impl<T> DerefMut for Channel<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.base
     }
 }
 
-unsafe impl Downcast<Channel<i8>> for AnyChannel {
-    fn is_instance_of(&self) -> bool {
-        matches!(self.field_type(), Ok(DbField::Char)) && matches!(self.element_count(), Ok(1))
+pub unsafe trait Type {
+    fn matches(dbf: DbField, count: usize) -> bool;
+}
+
+unsafe impl Type for i8 {
+    fn matches(dbf: DbField, count: usize) -> bool {
+        matches!(dbf, DbField::Char) && matches!(count, 1)
+    }
+}
+unsafe impl Type for i16 {
+    fn matches(dbf: DbField, count: usize) -> bool {
+        matches!(dbf, DbField::Short | DbField::Enum) && matches!(count, 1)
+    }
+}
+unsafe impl Type for i32 {
+    fn matches(dbf: DbField, count: usize) -> bool {
+        matches!(dbf, DbField::Long) && matches!(count, 1)
+    }
+}
+unsafe impl Type for f32 {
+    fn matches(dbf: DbField, count: usize) -> bool {
+        matches!(dbf, DbField::Float) && matches!(count, 1)
+    }
+}
+unsafe impl Type for f64 {
+    fn matches(dbf: DbField, count: usize) -> bool {
+        matches!(dbf, DbField::Double) && matches!(count, 1)
+    }
+}
+unsafe impl Type for [i8] {
+    fn matches(dbf: DbField, _: usize) -> bool {
+        matches!(dbf, DbField::Char)
+    }
+}
+unsafe impl Type for [i16] {
+    fn matches(dbf: DbField, _: usize) -> bool {
+        matches!(dbf, DbField::Short | DbField::Enum)
+    }
+}
+unsafe impl Type for [i32] {
+    fn matches(dbf: DbField, _: usize) -> bool {
+        matches!(dbf, DbField::Long)
+    }
+}
+unsafe impl Type for [f32] {
+    fn matches(dbf: DbField, _: usize) -> bool {
+        matches!(dbf, DbField::Float)
+    }
+}
+unsafe impl Type for [f64] {
+    fn matches(dbf: DbField, _: usize) -> bool {
+        matches!(dbf, DbField::Double)
+    }
+}
+unsafe impl Type for CStr {
+    fn matches(dbf: DbField, count: usize) -> bool {
+        matches!(dbf, DbField::String) && matches!(count, 1)
     }
 }
 
-unsafe impl Downcast<Channel<i16>> for AnyChannel {
-    fn is_instance_of(&self) -> bool {
-        matches!(self.field_type(), Ok(DbField::Short | DbField::Enum))
-            && matches!(self.element_count(), Ok(1))
+impl<T: Copy> Channel<T> {
+    pub async fn get(&mut self) -> Result<T, Error> {
+        unimplemented!()
+    }
+    pub async fn put(&mut self, value: T) -> Result<(), Error> {
+        unimplemented!()
     }
 }
-
-unsafe impl Downcast<Channel<i32>> for AnyChannel {
-    fn is_instance_of(&self) -> bool {
-        matches!(self.field_type(), Ok(DbField::Long)) && matches!(self.element_count(), Ok(1))
+impl<T: Copy> Channel<[T]> {
+    pub async fn get_in_place(&mut self, buffer: &mut [T]) -> Result<usize, Error> {
+        unimplemented!()
+    }
+    pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
+        unimplemented!()
+    }
+    pub async fn put(&mut self, data: &[T]) -> Result<usize, Error> {
+        unimplemented!()
     }
 }
-
-unsafe impl Downcast<Channel<f32>> for AnyChannel {
-    fn is_instance_of(&self) -> bool {
-        matches!(self.field_type(), Ok(DbField::Float)) && matches!(self.element_count(), Ok(1))
+impl Channel<CStr> {
+    pub async fn get_in_place(&mut self, buffer: &mut [u8]) -> Result<(), Error> {
+        unimplemented!()
     }
-}
-
-unsafe impl Downcast<Channel<f64>> for AnyChannel {
-    fn is_instance_of(&self) -> bool {
-        matches!(self.field_type(), Ok(DbField::Double)) && matches!(self.element_count(), Ok(1))
+    pub async fn get_string(&mut self) -> Result<CString, Error> {
+        unimplemented!()
     }
-}
-
-impl<T> Channel<T> {
-    pub fn get(&mut self) -> Result<T, Error> {
+    pub async fn put(&mut self, cstr: &CStr) -> Result<(), Error> {
         unimplemented!()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{AnyChannel, Channel, Context, Downcast};
+    use crate::{AnyChannel, Channel, Context};
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
@@ -89,6 +149,6 @@ mod tests {
         let any = AnyChannel::connect(ctx, c_str!("ca:test:ai"))
             .await
             .unwrap();
-        let _: Channel<f64> = any.downcast().unwrap();
+        let _: Channel<f64> = any.into_typed().unwrap();
     }
 }

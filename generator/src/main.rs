@@ -4,9 +4,8 @@ use std::env;
 
 fn main() -> Result<(), Error> {
     let epics_base = env::var("EPICS_BASE").unwrap();
-    println!("{}", epics_base);
+    println!("EPICS_BASE={}", epics_base);
 
-    let main_header = format!("{}/include/cadef.h", epics_base);
     builder()
         .generate_comments(false)
         .derive_copy(true)
@@ -28,15 +27,15 @@ fn main() -> Result<(), Error> {
             format!("-I{}/include/os/Linux", epics_base),
             "-DCA_DONT_INCLUDE_STDARGH".to_string(),
         ])
-        .header(&main_header)
+        .header(&format!("{}/include/cadef.h", epics_base))
         .allowlist_recursively(false)
+        .allowlist_file(&format!("{}/include/cadef.h", epics_base))
         .allowlist_file(format!("{}/include/epicsTypes.h", epics_base))
         .allowlist_type("epicsTimeStamp")
         .allowlist_type("epicsThreadId")
         .allowlist_file(format!("{}/include/db_access.h", epics_base))
         .allowlist_file(format!("{}/include/caerr.h", epics_base))
         .allowlist_file(format!("{}/include/caeventmask.h", epics_base))
-        .allowlist_file(&main_header)
         .blocklist_type("ca_access_rights")
         .raw_line("use crate::{ca_access_rights, epicsThreadOSD};")
         .generate()?

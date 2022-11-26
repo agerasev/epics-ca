@@ -21,14 +21,12 @@ record(bo, "ca:test:bo")
 record(aai, "ca:test:aai") {
     field(NELM, 64)
     field(FTVL, "LONG")
-
     field(SCAN, "Passive")
     field(INP, "ca:test:aai")
 }
 record(aao, "ca:test:aao") {
     field(NELM, 64)
     field(FTVL, "LONG")
-
     field(FLNK, "ca:test:aai")
 }
 

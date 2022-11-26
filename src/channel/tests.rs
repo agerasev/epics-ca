@@ -14,6 +14,7 @@ async fn analog() {
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), DbField::Double);
     assert_eq!(chan.element_count().unwrap(), 1);
+    //assert_eq!(chan.host_name().unwrap(), c_str!("localhost:5064"));
 }
 
 #[async_test]
