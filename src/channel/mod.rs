@@ -1,5 +1,8 @@
 mod any;
-mod scalar;
+mod typed;
 
 pub use any::*;
-pub use scalar::*;
+pub use typed::*;
+
+#[cfg(test)]
+mod tests;

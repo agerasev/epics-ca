@@ -1,9 +1,43 @@
 record(ai, "ca:test:ai")
 {
-	field(SCAN, "Passive")
-	field(INP, "ca:test:ao")
+    field(SCAN, "Passive")
+    field(INP, "ca:test:ao")
 }
 record(ao, "ca:test:ao")
 {
-	field(FLNK, "ca:test:ai")
+    field(FLNK, "ca:test:ai")
+}
+
+record(bi, "ca:test:bi")
+{
+    field(SCAN, "Passive")
+    field(INP, "ca:test:bo")
+}
+record(bo, "ca:test:bo")
+{
+    field(FLNK, "ca:test:bi")
+}
+
+record(aai, "ca:test:aai") {
+    field(NELM, 64)
+    field(FTVL, "LONG")
+
+    field(SCAN, "Passive")
+    field(INP, "ca:test:aai")
+}
+record(aao, "ca:test:aao") {
+    field(NELM, 64)
+    field(FTVL, "LONG")
+
+    field(FLNK, "ca:test:aai")
+}
+
+record(stringin, "ca:test:stringin")
+{
+    field(SCAN, "Passive")
+    field(INP, "ca:test:stringout")
+}
+record(stringout, "ca:test:stringout")
+{
+    field(FLNK, "ca:test:stringin")
 }

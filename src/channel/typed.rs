@@ -1,24 +1,37 @@
 use super::AnyChannel;
 use crate::{error::Error, traits::Downcast, types::DbField};
 use std::{
+    ffi::CStr,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
 
 #[repr(transparent)]
-pub struct Channel<T: Copy> {
+pub struct Channel<T: ?Sized> {
     base: AnyChannel,
     _p: PhantomData<T>,
 }
 
-impl<T: Copy> Deref for Channel<T> {
+impl<T: Copy> Channel<T> {
+    fn foo() {}
+}
+
+impl<T: Copy> Channel<[T]> {
+    fn foo() {}
+}
+
+impl Channel<CStr> {
+    fn foo() {}
+}
+
+impl<T> Deref for Channel<T> {
     type Target = AnyChannel;
     fn deref(&self) -> &Self::Target {
         &self.base
     }
 }
 
-impl<T: Copy> DerefMut for Channel<T> {
+impl<T> DerefMut for Channel<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.base
     }
@@ -85,7 +98,7 @@ impl Downcast<Channel<f64>> for AnyChannel {
     }
 }
 
-impl<T: Copy> Channel<T> {
+impl<T> Channel<T> {
     pub fn get(&mut self) -> Result<T, Error> {
         unimplemented!()
     }

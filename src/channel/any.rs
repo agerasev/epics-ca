@@ -190,7 +190,7 @@ impl<'a> Connect<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{types::DbField, AnyChannel, Context};
+    use crate::{AnyChannel, Context};
     use async_std::{task::sleep, test as async_test};
     use c_str_macro::c_str;
     use futures::{select, FutureExt};
@@ -213,18 +213,6 @@ mod tests {
             _ = AnyChannel::connect(ctx, c_str!("__nonexistent__")) => panic!(),
             _ = sleep(Duration::from_millis(100)).fuse() => (),
         }
-    }
-
-    #[async_test]
-    #[serial]
-    async fn properties() {
-        let name = c_str!("ca:test:ai");
-        let chan = AnyChannel::connect(Arc::new(Context::new().unwrap()), name)
-            .await
-            .unwrap();
-        assert_eq!(chan.name(), name);
-        assert_eq!(chan.field_type().unwrap(), DbField::Double);
-        assert_eq!(chan.element_count().unwrap(), 1);
     }
 
     #[async_test]
