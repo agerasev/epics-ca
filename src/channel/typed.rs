@@ -6,105 +6,42 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-#[repr(transparent)]
 pub struct Channel<T: ?Sized> {
     base: AnyChannel,
+    dbf: DbField,
+    count: usize,
     _p: PhantomData<T>,
 }
 
-impl<T> Channel<T> {
-    pub(crate) fn from_any_unchecked(base: AnyChannel) -> Self {
+impl<T: ?Sized> Channel<T> {
+    pub(crate) fn from_any_unchecked(base: AnyChannel, dbf: DbField, count: usize) -> Self {
         Self {
             base,
+            dbf,
+            count,
             _p: PhantomData,
         }
     }
-    pub(crate) fn from_any_ref_unchecked(base: &AnyChannel) -> &Self {
-        unsafe { &*(base as *const _ as *const Self) }
-    }
-    pub(crate) fn from_any_mut_unchecked(base: &mut AnyChannel) -> &mut Self {
-        unsafe { &mut *(base as *mut _ as *mut Self) }
-    }
-
     pub fn into_any(self) -> AnyChannel {
         self.base
     }
 }
 
-impl<T> Deref for Channel<T> {
+impl<T: ?Sized> Deref for Channel<T> {
     type Target = AnyChannel;
     fn deref(&self) -> &Self::Target {
         &self.base
     }
 }
-impl<T> DerefMut for Channel<T> {
+impl<T: ?Sized> DerefMut for Channel<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.base
     }
 }
 
-pub unsafe trait Type {
-    fn matches(dbf: DbField, count: usize) -> bool;
-}
-
-unsafe impl Type for i8 {
-    fn matches(dbf: DbField, count: usize) -> bool {
-        matches!(dbf, DbField::Char) && matches!(count, 1)
-    }
-}
-unsafe impl Type for i16 {
-    fn matches(dbf: DbField, count: usize) -> bool {
-        matches!(dbf, DbField::Short | DbField::Enum) && matches!(count, 1)
-    }
-}
-unsafe impl Type for i32 {
-    fn matches(dbf: DbField, count: usize) -> bool {
-        matches!(dbf, DbField::Long) && matches!(count, 1)
-    }
-}
-unsafe impl Type for f32 {
-    fn matches(dbf: DbField, count: usize) -> bool {
-        matches!(dbf, DbField::Float) && matches!(count, 1)
-    }
-}
-unsafe impl Type for f64 {
-    fn matches(dbf: DbField, count: usize) -> bool {
-        matches!(dbf, DbField::Double) && matches!(count, 1)
-    }
-}
-unsafe impl Type for [i8] {
-    fn matches(dbf: DbField, _: usize) -> bool {
-        matches!(dbf, DbField::Char)
-    }
-}
-unsafe impl Type for [i16] {
-    fn matches(dbf: DbField, _: usize) -> bool {
-        matches!(dbf, DbField::Short | DbField::Enum)
-    }
-}
-unsafe impl Type for [i32] {
-    fn matches(dbf: DbField, _: usize) -> bool {
-        matches!(dbf, DbField::Long)
-    }
-}
-unsafe impl Type for [f32] {
-    fn matches(dbf: DbField, _: usize) -> bool {
-        matches!(dbf, DbField::Float)
-    }
-}
-unsafe impl Type for [f64] {
-    fn matches(dbf: DbField, _: usize) -> bool {
-        matches!(dbf, DbField::Double)
-    }
-}
-unsafe impl Type for CStr {
-    fn matches(dbf: DbField, count: usize) -> bool {
-        matches!(dbf, DbField::String) && matches!(count, 1)
-    }
-}
-
 impl<T: Copy> Channel<T> {
     pub async fn get(&mut self) -> Result<T, Error> {
+        //unsafe { sys::ca_get_callback(self.raw()) }
         unimplemented!()
     }
     pub async fn put(&mut self, value: T) -> Result<(), Error> {
@@ -112,7 +49,7 @@ impl<T: Copy> Channel<T> {
     }
 }
 impl<T: Copy> Channel<[T]> {
-    pub async fn get_in_place(&mut self, buffer: &mut [T]) -> Result<usize, Error> {
+    pub async fn get_in_place(&mut self, buf: &mut [T]) -> Result<usize, Error> {
         unimplemented!()
     }
     pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
@@ -123,7 +60,7 @@ impl<T: Copy> Channel<[T]> {
     }
 }
 impl Channel<CStr> {
-    pub async fn get_in_place(&mut self, buffer: &mut [u8]) -> Result<(), Error> {
+    pub async fn get_in_place(&mut self, buf: &mut [u8]) -> Result<(), Error> {
         unimplemented!()
     }
     pub async fn get_string(&mut self) -> Result<CString, Error> {

@@ -1,7 +1,8 @@
-use super::{Channel, Type};
 use crate::{
+    channel::Channel,
     context::Context,
     error::{self, result_from_raw, Error},
+    traits::Type,
     types::DbField,
     utils::Ptr,
 };
@@ -187,26 +188,20 @@ impl<'a> Connect<'a> {
 }
 
 impl AnyChannel {
-    fn match_type<T: Type>(&self) -> Result<(), Error> {
-        if T::matches(self.field_type()?, self.element_count()?) {
-            Ok(())
+    fn match_type<T: Type + ?Sized>(&self) -> Result<(DbField, usize), Error> {
+        let dbf = self.field_type()?;
+        let count = self.element_count()?;
+        if T::matches(dbf, count) {
+            Ok((dbf, count))
         } else {
             Err(error::BADTYPE)
         }
     }
-    pub fn into_typed<T: Type>(self) -> Result<Channel<T>, (Error, Self)> {
+    pub fn into_typed<T: Type + ?Sized>(self) -> Result<Channel<T>, (Error, Self)> {
         match self.match_type::<T>() {
-            Ok(()) => Ok(Channel::from_any_unchecked(self)),
+            Ok((dbf, count)) => Ok(Channel::from_any_unchecked(self, dbf, count)),
             Err(err) => Err((err, self)),
         }
-    }
-    pub fn typed_ref<T: Type>(&self) -> Result<&Channel<T>, Error> {
-        self.match_type::<T>()
-            .map(|()| Channel::from_any_ref_unchecked(self))
-    }
-    pub fn typed_mut<T: Type>(&mut self) -> Result<&mut Channel<T>, Error> {
-        self.match_type::<T>()
-            .map(|()| Channel::from_any_mut_unchecked(self))
     }
 }
 
