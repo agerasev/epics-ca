@@ -1,7 +1,7 @@
 use crate::types::DbField;
 use std::ffi::CStr;
 
-trait Scalar {
+pub trait Scalar {
     fn matches_field(dbf: DbField) -> bool;
 }
 

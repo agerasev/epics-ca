@@ -8,9 +8,8 @@ use std::sync::Arc;
 #[serial]
 async fn analog() {
     let name = c_str!("ca:test:ai");
-    let chan = AnyChannel::connect(Arc::new(Context::new().unwrap()), name)
-        .await
-        .unwrap();
+    let mut chan = AnyChannel::new(Arc::new(Context::new().unwrap()), name).unwrap();
+    chan.connected().await;
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), DbField::Double);
     assert_eq!(chan.element_count().unwrap(), 1);
@@ -21,9 +20,8 @@ async fn analog() {
 #[serial]
 async fn binary() {
     let name = c_str!("ca:test:bi");
-    let chan = AnyChannel::connect(Arc::new(Context::new().unwrap()), name)
-        .await
-        .unwrap();
+    let mut chan = AnyChannel::new(Arc::new(Context::new().unwrap()), name).unwrap();
+    chan.connected().await;
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), DbField::Enum);
     assert_eq!(chan.element_count().unwrap(), 1);
@@ -33,9 +31,8 @@ async fn binary() {
 #[serial]
 async fn string() {
     let name = c_str!("ca:test:stringin");
-    let chan = AnyChannel::connect(Arc::new(Context::new().unwrap()), name)
-        .await
-        .unwrap();
+    let mut chan = AnyChannel::new(Arc::new(Context::new().unwrap()), name).unwrap();
+    chan.connected().await;
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), DbField::String);
     assert_eq!(chan.element_count().unwrap(), 1);
@@ -45,9 +42,8 @@ async fn string() {
 #[serial]
 async fn array() {
     let name = c_str!("ca:test:aai");
-    let chan = AnyChannel::connect(Arc::new(Context::new().unwrap()), name)
-        .await
-        .unwrap();
+    let mut chan = AnyChannel::new(Arc::new(Context::new().unwrap()), name).unwrap();
+    chan.connected().await;
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), DbField::Long);
     assert_eq!(chan.element_count().unwrap(), 64);

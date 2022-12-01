@@ -1,54 +1,69 @@
 use super::AnyChannel;
-use crate::{error::Error, types::DbField};
+use crate::{
+    error::{result_from_raw, Error},
+    traits::Scalar,
+    types::DbField,
+};
 use std::{
     ffi::{CStr, CString},
     marker::PhantomData,
+    mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
 
 pub struct Channel<T: ?Sized> {
-    base: AnyChannel,
+    any: AnyChannel,
     dbf: DbField,
     count: usize,
     _p: PhantomData<T>,
 }
 
 impl<T: ?Sized> Channel<T> {
-    pub(crate) fn from_any_unchecked(base: AnyChannel, dbf: DbField, count: usize) -> Self {
+    pub(crate) fn from_any_unchecked(any: AnyChannel, dbf: DbField, count: usize) -> Self {
         Self {
-            base,
+            any,
             dbf,
             count,
             _p: PhantomData,
         }
     }
     pub fn into_any(self) -> AnyChannel {
-        self.base
+        self.any
     }
 }
 
 impl<T: ?Sized> Deref for Channel<T> {
     type Target = AnyChannel;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.any
     }
 }
 impl<T: ?Sized> DerefMut for Channel<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.any
     }
 }
 
-impl<T: Copy> Channel<T> {
+impl<T: Scalar> Channel<T> {
     pub async fn get(&mut self) -> Result<T, Error> {
-        //unsafe { sys::ca_get_callback(self.raw()) }
-        unimplemented!()
+        let mut value = MaybeUninit::<T>::uninit();
+        result_from_raw(unsafe {
+            sys::ca_get_callback(
+                self.dbf as _,
+                self.raw(),
+                Some(Self::callback),
+                value.as_mut_ptr() as *mut _,
+            )
+        })
+        .map(|()| unsafe { value.assume_init() })
     }
     pub async fn put(&mut self, value: T) -> Result<(), Error> {
         unimplemented!()
     }
+
+    unsafe extern "C" fn callback(args: sys::event_handler_args) {}
 }
-impl<T: Copy> Channel<[T]> {
+impl<T: Scalar> Channel<[T]> {
     pub async fn get_in_place(&mut self, buf: &mut [T]) -> Result<usize, Error> {
         unimplemented!()
     }
@@ -73,7 +88,7 @@ impl Channel<CStr> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{AnyChannel, Channel, Context};
+    use crate::{AnyChannel, Context};
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
@@ -83,9 +98,8 @@ mod tests {
     #[serial]
     async fn downcast() {
         let ctx = Arc::new(Context::new().unwrap());
-        let any = AnyChannel::connect(ctx, c_str!("ca:test:ai"))
-            .await
-            .unwrap();
-        let _: Channel<f64> = any.into_typed().unwrap();
+        let mut any = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
+        any.connected().await;
+        any.into_typed::<f64>().unwrap();
     }
 }
