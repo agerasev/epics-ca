@@ -1,3 +1,5 @@
+use std::{mem::align_of, slice};
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
     String,
@@ -151,6 +153,118 @@ impl AccessRights {
             raw |= sys::CA_WRITE_ACCESS;
         }
         raw
+    }
+}
+
+pub type EpicsString = sys::epicsOldString;
+
+pub trait Type {
+    const FIELD: DbField;
+
+    fn match_field(dbf: DbField) -> bool {
+        dbf == Self::FIELD
+    }
+    fn match_count(count: usize) -> bool {
+        count == 1
+    }
+}
+
+pub trait TypeExt: Type {
+    type Element: Type + Sized;
+
+    fn element_count(&self) -> usize;
+
+    fn as_ptr(&self) -> *const u8;
+    fn as_mut_ptr(&mut self) -> *mut u8;
+
+    unsafe fn ref_from_ptr<'a>(data: *const u8, count: usize) -> &'a Self;
+    unsafe fn mut_from_ptr<'a>(data: *mut u8, count: usize) -> &'a mut Self;
+}
+
+impl Type for i8 {
+    const FIELD: DbField = DbField::Char;
+}
+impl Type for i16 {
+    const FIELD: DbField = DbField::Short;
+
+    fn match_field(dbf: DbField) -> bool {
+        matches!(dbf, DbField::Short | DbField::Enum)
+    }
+}
+impl Type for i32 {
+    const FIELD: DbField = DbField::Long;
+}
+impl Type for f32 {
+    const FIELD: DbField = DbField::Float;
+}
+impl Type for f64 {
+    const FIELD: DbField = DbField::Double;
+}
+impl Type for EpicsString {
+    const FIELD: DbField = DbField::String;
+}
+
+impl<T: Type> Type for [T] {
+    const FIELD: DbField = T::FIELD;
+
+    fn match_field(dbf: DbField) -> bool {
+        T::match_field(dbf)
+    }
+    fn match_count(_count: usize) -> bool {
+        true
+    }
+}
+
+impl<T: Type> TypeExt for T {
+    type Element = T;
+
+    fn element_count(&self) -> usize {
+        1
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self as *const _ as *const u8
+    }
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self as *mut _ as *mut u8
+    }
+
+    unsafe fn ref_from_ptr<'a>(data: *const u8, count: usize) -> &'a T {
+        debug_assert_eq!(count, 1);
+        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
+        &*(data as *const T)
+    }
+    unsafe fn mut_from_ptr<'a>(data: *mut u8, count: usize) -> &'a mut T {
+        debug_assert_eq!(count, 1);
+        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
+        &mut *(data as *mut T)
+    }
+}
+
+impl<T: Type> TypeExt for [T]
+where
+    Self: Type,
+{
+    type Element = T;
+
+    fn element_count(&self) -> usize {
+        self.len()
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.as_ptr() as *const u8
+    }
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr() as *mut u8
+    }
+
+    unsafe fn ref_from_ptr<'a>(data: *const u8, count: usize) -> &'a [T] {
+        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
+        slice::from_raw_parts(data as *const T, count)
+    }
+    unsafe fn mut_from_ptr<'a>(data: *mut u8, count: usize) -> &'a mut [T] {
+        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
+        slice::from_raw_parts_mut(data as *mut T, count)
     }
 }
 

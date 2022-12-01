@@ -1,8 +1,6 @@
 use crate::{
-    channel::Channel,
     context::Context,
     error::{self, result_from_raw, Error},
-    traits::Type,
     types::DbField,
     utils::Ptr,
 };
@@ -13,7 +11,7 @@ use std::{
     pin::Pin,
     ptr::{self, NonNull},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     task::{Context as Cx, Poll},
@@ -38,7 +36,7 @@ impl AnyChannel {
             match result_from_raw(unsafe {
                 sys::ca_create_channel(
                     name.as_ptr(),
-                    Some(connect_callback),
+                    Some(Self::connect_callback),
                     puser as *mut c_void,
                     DEFAULT_PRIORITY,
                     &mut raw as *mut _,
@@ -109,14 +107,17 @@ impl Drop for AnyChannel {
         self.context().with(|| {
             let puser = self.user_data() as *const _ as *mut UserData;
             result_from_raw(unsafe { sys::ca_clear_channel(self.raw()) }).unwrap();
-            unsafe { Box::from_raw(puser) }
+            unsafe { Box::from_raw(puser) };
         });
     }
 }
 
 pub(crate) struct UserData {
-    connected: AtomicBool,
     waker: AtomicWaker,
+    connected: AtomicBool,
+    id_counter: AtomicUsize,
+    data: *mut u8,
+    count: usize,
 }
 
 impl UserData {
@@ -124,10 +125,20 @@ impl UserData {
         Self {
             connected: AtomicBool::new(false),
             waker: AtomicWaker::new(),
+            id_counter: AtomicUsize::new(0),
+            data: ptr::null_mut(),
+            count: 0,
         }
+    }
+    pub(crate) fn id(&self) -> usize {
+        self.id_counter.load(Ordering::Acquire)
+    }
+    pub(crate) fn change_id(&self) {
+        self.id_counter.fetch_add(1, Ordering::AcqRel);
     }
 }
 
+#[must_use]
 pub struct Connected<'a> {
     channel: Option<&'a mut AnyChannel>,
 }
@@ -160,34 +171,19 @@ impl<'a> FusedFuture for Connected<'a> {
     }
 }
 
-unsafe extern "C" fn connect_callback(args: sys::connection_handler_args) {
-    let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
-    user_data.connected.store(
-        match args.op as i32 {
-            sys::CA_OP_CONN_UP => true,
-            sys::CA_OP_CONN_DOWN => false,
-            _ => unreachable!(),
-        },
-        Ordering::Release,
-    );
-    user_data.waker.wake();
-}
-
 impl AnyChannel {
-    fn match_type<T: Type + ?Sized>(&self) -> Result<(DbField, usize), Error> {
-        let dbf = self.field_type()?;
-        let count = self.element_count()?;
-        if T::matches(dbf, count) {
-            Ok((dbf, count))
-        } else {
-            Err(error::BADTYPE)
-        }
-    }
-    pub fn into_typed<T: Type + ?Sized>(self) -> Result<Channel<T>, (Error, Self)> {
-        match self.match_type::<T>() {
-            Ok((dbf, count)) => Ok(Channel::from_any_unchecked(self, dbf, count)),
-            Err(err) => Err((err, self)),
-        }
+    unsafe extern "C" fn connect_callback(args: sys::connection_handler_args) {
+        println!("connect_callback: {:?}", args);
+        let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
+        user_data.connected.store(
+            match args.op as _ {
+                sys::CA_OP_CONN_UP => true,
+                sys::CA_OP_CONN_DOWN => false,
+                _ => unreachable!(),
+            },
+            Ordering::Release,
+        );
+        user_data.waker.wake();
     }
 }
 
