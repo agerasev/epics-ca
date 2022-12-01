@@ -1,5 +1,5 @@
 use crate::error::{result_from_raw, Error};
-use std::ptr::NonNull;
+use std::{ptr::NonNull, sync::Arc};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Context {
@@ -9,7 +9,7 @@ pub struct Context {
 unsafe impl Send for Context {}
 
 impl Context {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Arc<Self>, Error> {
         let prev = Self::current();
         if !prev.is_null() {
             Self::detach();
@@ -29,7 +29,7 @@ impl Context {
         if let Some(prev) = NonNull::new(prev) {
             Self::attach(prev);
         }
-        ret
+        ret.map(Arc::new)
     }
     pub(crate) fn current() -> *mut sys::ca_client_context {
         unsafe { sys::ca_current_context() }

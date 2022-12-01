@@ -208,12 +208,12 @@ mod tests {
     use c_str_macro::c_str;
     use futures::{select, FutureExt};
     use serial_test::serial;
-    use std::{ptr, sync::Arc, time::Duration};
+    use std::{ptr, time::Duration};
 
     #[async_test]
     #[serial]
     async fn connect() {
-        let ctx = Arc::new(Context::new().unwrap());
+        let ctx = Context::new().unwrap();
         AnyChannel::new(ctx, c_str!("ca:test:ai"))
             .unwrap()
             .connected()
@@ -222,8 +222,7 @@ mod tests {
 
     #[async_test]
     async fn connect_nonexistent() {
-        let mut chan =
-            AnyChannel::new(Arc::new(Context::new().unwrap()), c_str!("__nonexistent__")).unwrap();
+        let mut chan = AnyChannel::new(Context::new().unwrap(), c_str!("__nonexistent__")).unwrap();
         select! {
             _ = chan.connected() => panic!(),
             _ = sleep(Duration::from_millis(100)).fuse() => (),
@@ -233,7 +232,7 @@ mod tests {
     #[async_test]
     #[serial]
     async fn user_data() {
-        let ctx = Arc::new(Context::new().unwrap());
+        let ctx = Context::new().unwrap();
         let mut channel = AnyChannel::new(ctx.clone(), c_str!("ca:test:ai")).unwrap();
         channel.connected().await;
 

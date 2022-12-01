@@ -22,7 +22,7 @@ record(aai, "ca:test:aai") {
     field(NELM, 64)
     field(FTVL, "LONG")
     field(SCAN, "Passive")
-    field(INP, "ca:test:aai")
+    field(INP, "ca:test:aao")
 }
 record(aao, "ca:test:aao") {
     field(NELM, 64)

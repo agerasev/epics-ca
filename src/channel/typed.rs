@@ -217,12 +217,12 @@ mod tests {
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
-    use std::{f64::consts::PI, sync::Arc};
+    use std::f64::consts::PI;
 
     #[async_test]
     #[serial]
     async fn downcast() {
-        let ctx = Arc::new(Context::new().unwrap());
+        let ctx = Context::new().unwrap();
         let mut any = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
         any.connected().await;
         any.into_typed::<f64>().unwrap();
@@ -231,7 +231,7 @@ mod tests {
     #[async_test]
     #[serial]
     async fn put_get() {
-        let ctx = Arc::new(Context::new().unwrap());
+        let ctx = Context::new().unwrap();
 
         let mut output = AnyChannel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
         output.connected().await;
