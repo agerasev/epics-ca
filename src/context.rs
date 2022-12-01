@@ -58,8 +58,9 @@ impl Context {
         ret
     }
 
-    pub(crate) fn flush_io(&self) -> Result<(), Error> {
+    pub(crate) fn flush_io(&self) {
         self.with(|| result_from_raw(unsafe { sys::ca_flush_io() }))
+            .unwrap()
     }
 }
 

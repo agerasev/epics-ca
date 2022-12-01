@@ -1,4 +1,7 @@
-use std::{mem::align_of, slice};
+use std::{
+    mem::{align_of, size_of},
+    ptr::copy_nonoverlapping,
+};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
@@ -158,65 +161,68 @@ impl AccessRights {
 
 pub type EpicsString = sys::epicsOldString;
 
-pub trait Type {
-    const FIELD: DbField;
+trait Scalar: Sized {
+    fn matches(dbf: DbField) -> bool;
+}
 
-    fn match_field(dbf: DbField) -> bool {
-        dbf == Self::FIELD
+impl Scalar for i8 {
+    fn matches(dbf: DbField) -> bool {
+        matches!(dbf, DbField::Char)
     }
-    fn match_count(count: usize) -> bool {
-        count == 1
+}
+impl Scalar for i16 {
+    fn matches(dbf: DbField) -> bool {
+        matches!(dbf, DbField::Short | DbField::Enum)
+    }
+}
+impl Scalar for i32 {
+    fn matches(dbf: DbField) -> bool {
+        matches!(dbf, DbField::Long)
+    }
+}
+impl Scalar for f32 {
+    fn matches(dbf: DbField) -> bool {
+        matches!(dbf, DbField::Float)
+    }
+}
+impl Scalar for f64 {
+    fn matches(dbf: DbField) -> bool {
+        matches!(dbf, DbField::Double)
+    }
+}
+impl Scalar for EpicsString {
+    fn matches(dbf: DbField) -> bool {
+        matches!(dbf, DbField::String)
     }
 }
 
-pub trait TypeExt: Type {
+pub trait Type {
     type Element: Type + Sized;
+
+    fn match_field(dbf: DbField) -> bool;
+    fn match_count(count: usize) -> bool;
 
     fn element_count(&self) -> usize;
 
     fn as_ptr(&self) -> *const u8;
     fn as_mut_ptr(&mut self) -> *mut u8;
 
-    unsafe fn ref_from_ptr<'a>(data: *const u8, count: usize) -> &'a Self;
-    unsafe fn mut_from_ptr<'a>(data: *mut u8, count: usize) -> &'a mut Self;
+    /// # Safety
+    ///
+    /// `src` and `dst` must be valid pointers to memory of size `count * size_of::<T>()` and must not overlap.
+    /// Also `dst` must be aligned as `T::Element`.
+    unsafe fn copy_data(dst: *mut u8, src: *const u8, count: usize);
 }
 
-impl Type for i8 {
-    const FIELD: DbField = DbField::Char;
-}
-impl Type for i16 {
-    const FIELD: DbField = DbField::Short;
-
-    fn match_field(dbf: DbField) -> bool {
-        matches!(dbf, DbField::Short | DbField::Enum)
-    }
-}
-impl Type for i32 {
-    const FIELD: DbField = DbField::Long;
-}
-impl Type for f32 {
-    const FIELD: DbField = DbField::Float;
-}
-impl Type for f64 {
-    const FIELD: DbField = DbField::Double;
-}
-impl Type for EpicsString {
-    const FIELD: DbField = DbField::String;
-}
-
-impl<T: Type> Type for [T] {
-    const FIELD: DbField = T::FIELD;
-
-    fn match_field(dbf: DbField) -> bool {
-        T::match_field(dbf)
-    }
-    fn match_count(_count: usize) -> bool {
-        true
-    }
-}
-
-impl<T: Type> TypeExt for T {
+impl<T: Scalar> Type for T {
     type Element = T;
+
+    fn match_field(dbf: DbField) -> bool {
+        Self::matches(dbf)
+    }
+    fn match_count(count: usize) -> bool {
+        count == 1
+    }
 
     fn element_count(&self) -> usize {
         1
@@ -229,23 +235,22 @@ impl<T: Type> TypeExt for T {
         self as *mut _ as *mut u8
     }
 
-    unsafe fn ref_from_ptr<'a>(data: *const u8, count: usize) -> &'a T {
+    unsafe fn copy_data(dst: *mut u8, src: *const u8, count: usize) {
         debug_assert_eq!(count, 1);
-        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
-        &*(data as *const T)
-    }
-    unsafe fn mut_from_ptr<'a>(data: *mut u8, count: usize) -> &'a mut T {
-        debug_assert_eq!(count, 1);
-        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
-        &mut *(data as *mut T)
+        debug_assert_eq!(dst.align_offset(align_of::<T>()), 0);
+        copy_nonoverlapping(src, dst, size_of::<T>());
     }
 }
 
-impl<T: Type> TypeExt for [T]
-where
-    Self: Type,
-{
+impl<T: Type> Type for [T] {
     type Element = T;
+
+    fn match_field(dbf: DbField) -> bool {
+        T::match_field(dbf)
+    }
+    fn match_count(_count: usize) -> bool {
+        true
+    }
 
     fn element_count(&self) -> usize {
         self.len()
@@ -258,19 +263,15 @@ where
         self.as_mut_ptr() as *mut u8
     }
 
-    unsafe fn ref_from_ptr<'a>(data: *const u8, count: usize) -> &'a [T] {
-        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
-        slice::from_raw_parts(data as *const T, count)
-    }
-    unsafe fn mut_from_ptr<'a>(data: *mut u8, count: usize) -> &'a mut [T] {
-        debug_assert_eq!(data.align_offset(align_of::<T>()), 0);
-        slice::from_raw_parts_mut(data as *mut T, count)
+    unsafe fn copy_data(dst: *mut u8, src: *const u8, count: usize) {
+        debug_assert_eq!(dst.align_offset(align_of::<T>()), 0);
+        copy_nonoverlapping(src, dst, count * size_of::<T>());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DbField;
+    use super::*;
 
     fn dbf_size(dbf: DbField) -> usize {
         unsafe { *(sys::dbr_size.as_ptr().offset(dbf.raw() as isize)) as usize }
@@ -278,12 +279,12 @@ mod tests {
 
     #[test]
     fn dbr_sizes() {
-        assert_eq!(dbf_size(DbField::String), sys::MAX_STRING_SIZE as usize);
-        assert_eq!(dbf_size(DbField::Short), 2);
-        assert_eq!(dbf_size(DbField::Float), 4);
-        assert_eq!(dbf_size(DbField::Enum), 2);
-        assert_eq!(dbf_size(DbField::Char), 1);
-        assert_eq!(dbf_size(DbField::Long), 4);
-        assert_eq!(dbf_size(DbField::Double), 8);
+        assert_eq!(dbf_size(DbField::String), size_of::<EpicsString>());
+        assert_eq!(dbf_size(DbField::Short), size_of::<i16>());
+        assert_eq!(dbf_size(DbField::Float), size_of::<f32>());
+        assert_eq!(dbf_size(DbField::Enum), size_of::<i16>());
+        assert_eq!(dbf_size(DbField::Char), size_of::<i8>());
+        assert_eq!(dbf_size(DbField::Long), size_of::<i32>());
+        assert_eq!(dbf_size(DbField::Double), size_of::<f64>());
     }
 }

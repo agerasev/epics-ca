@@ -11,8 +11,8 @@ use std::{
     pin::Pin,
     ptr::{self, NonNull},
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
     task::{Context as Cx, Poll},
 };
@@ -43,11 +43,11 @@ impl AnyChannel {
                 )
             }) {
                 Ok(()) => {
-                    let chan = AnyChannel {
+                    ctx.flush_io();
+                    Ok(AnyChannel {
                         ctx,
                         raw: NonNull::new(raw).unwrap(),
-                    };
-                    chan.context().flush_io().map(|()| chan)
+                    })
                 }
                 Err(e) => {
                     unsafe { Box::from_raw(puser) };
@@ -113,11 +113,9 @@ impl Drop for AnyChannel {
 }
 
 pub(crate) struct UserData {
-    waker: AtomicWaker,
-    connected: AtomicBool,
-    id_counter: AtomicUsize,
-    data: *mut u8,
-    count: usize,
+    pub(crate) waker: AtomicWaker,
+    pub(crate) connected: AtomicBool,
+    pub(crate) process: Mutex<ProcessData>,
 }
 
 impl UserData {
@@ -125,16 +123,32 @@ impl UserData {
         Self {
             connected: AtomicBool::new(false),
             waker: AtomicWaker::new(),
-            id_counter: AtomicUsize::new(0),
+            process: Mutex::new(ProcessData::new()),
+        }
+    }
+}
+
+pub(crate) struct ProcessData {
+    id_counter: usize,
+    pub(crate) data: *mut u8,
+    pub(crate) count: usize,
+    pub(crate) status: Option<Result<(), Error>>,
+}
+
+impl ProcessData {
+    fn new() -> Self {
+        Self {
+            id_counter: 0,
             data: ptr::null_mut(),
             count: 0,
+            status: None,
         }
     }
     pub(crate) fn id(&self) -> usize {
-        self.id_counter.load(Ordering::Acquire)
+        self.id_counter
     }
-    pub(crate) fn change_id(&self) {
-        self.id_counter.fetch_add(1, Ordering::AcqRel);
+    pub(crate) fn change_id(&mut self) {
+        self.id_counter += 1;
     }
 }
 

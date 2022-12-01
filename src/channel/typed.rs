@@ -3,7 +3,6 @@ use crate::{
     error::{self, result_from_raw, Error},
     types::{DbField, Type},
 };
-use futures::future::FusedFuture;
 use std::{
     future::Future,
     marker::PhantomData,
@@ -72,21 +71,50 @@ impl<T: ?Sized> DerefMut for Channel<T> {
 }
 
 impl<T: Type + ?Sized> Channel<T> {
-    pub fn get(&self, data: &mut T) -> Result<Get<'_, T>, Error> {
-        result_from_raw(unsafe {
-            sys::ca_array_get_callback(
-                self.dbf as _,
-                0,
-                self.raw(),
-                Some(Self::get_callback),
-                self.user_data().id() as _,
-            )
-        })
-        .and_then(|()| self.context().flush_io());
-        unimplemented!()
+    pub fn get(&mut self, data: &mut T) -> Result<Get<'_, T>, Error> {
+        self.context()
+            .with(|| {
+                let mut proc = self.user_data().process.lock().unwrap();
+                proc.data = data.as_mut_ptr() as _;
+                if cfg!(debug_assertions) {
+                    proc.count = data.element_count();
+                }
+                result_from_raw(unsafe {
+                    sys::ca_array_get_callback(
+                        self.dbf as _,
+                        data.element_count() as _,
+                        self.raw(),
+                        Some(Self::get_callback),
+                        proc.id() as _,
+                    )
+                })
+                .map(|()| {
+                    self.context().flush_io();
+                    proc.status = None;
+                })
+            })
+            .map(|()| Get { owner: self })
     }
-    pub fn put(&self, data: &T) -> Result<Put<'_, T>, Error> {
-        unimplemented!()
+    pub fn put(&mut self, data: &T) -> Result<Put<'_, T>, Error> {
+        self.context()
+            .with(|| {
+                let mut proc = self.user_data().process.lock().unwrap();
+                result_from_raw(unsafe {
+                    sys::ca_array_put_callback(
+                        self.dbf as _,
+                        data.element_count() as _,
+                        self.raw(),
+                        data.as_ptr() as _,
+                        Some(Self::put_callback),
+                        proc.id() as _,
+                    )
+                })
+                .map(|()| {
+                    self.context().flush_io();
+                    proc.status = None;
+                })
+            })
+            .map(|()| Put { owner: self })
     }
 }
 
@@ -113,17 +141,18 @@ impl<'a, T: Type + ?Sized> Unpin for Get<'a, T> {}
 impl<'a, T: Type + ?Sized> Future for Get<'a, T> {
     type Output = Result<usize, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unimplemented!()
-    }
-}
-impl<'a, T: Type + ?Sized> FusedFuture for Get<'a, T> {
-    fn is_terminated(&self) -> bool {
-        unimplemented!()
+        let user_data = self.owner.user_data();
+        user_data.waker.register(cx.waker());
+        let mut proc = user_data.process.lock().unwrap();
+        match proc.status.take() {
+            Some(status) => Poll::Ready(status.map(|()| proc.count)),
+            None => Poll::Pending,
+        }
     }
 }
 impl<'a, T: Type + ?Sized> Drop for Get<'a, T> {
     fn drop(&mut self) {
-        self.owner.user_data().change_id();
+        self.owner.user_data().process.lock().unwrap().change_id();
     }
 }
 
@@ -134,17 +163,18 @@ impl<'a, T: Type + ?Sized> Unpin for Put<'a, T> {}
 impl<'a, T: Type + ?Sized> Future for Put<'a, T> {
     type Output = Result<(), Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unimplemented!()
-    }
-}
-impl<'a, T: Type + ?Sized> FusedFuture for Put<'a, T> {
-    fn is_terminated(&self) -> bool {
-        unimplemented!()
+        let user_data = self.owner.user_data();
+        user_data.waker.register(cx.waker());
+        let mut proc = user_data.process.lock().unwrap();
+        match proc.status.take() {
+            Some(status) => Poll::Ready(status),
+            None => Poll::Pending,
+        }
     }
 }
 impl<'a, T: Type + ?Sized> Drop for Put<'a, T> {
     fn drop(&mut self) {
-        self.owner.user_data().change_id();
+        self.owner.user_data().process.lock().unwrap().change_id();
     }
 }
 
@@ -152,16 +182,32 @@ impl<T: Type + ?Sized> Channel<T> {
     unsafe extern "C" fn get_callback(args: sys::event_handler_args) {
         println!("get_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
-        if user_data.id() != args.usr as usize {
+        let mut proc = user_data.process.lock().unwrap();
+        if proc.id() != args.usr as usize {
             return;
         }
+        let status = result_from_raw(args.status);
+        if status.is_ok() {
+            let count = args.count as usize;
+            debug_assert!(count <= proc.count);
+            debug_assert!(T::match_field(
+                DbField::try_from_raw(args.type_ as _).unwrap()
+            ));
+            T::copy_data(proc.data, args.dbr as _, count);
+            proc.count = count;
+        }
+        proc.status = Some(status);
+        user_data.waker.wake();
     }
     unsafe extern "C" fn put_callback(args: sys::event_handler_args) {
         println!("put_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
-        if user_data.id() != args.usr as usize {
+        let mut proc = user_data.process.lock().unwrap();
+        if proc.id() != args.usr as usize {
             return;
         }
+        proc.status = Some(result_from_raw(args.status));
+        user_data.waker.wake();
     }
 }
 
@@ -171,7 +217,7 @@ mod tests {
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
-    use std::sync::Arc;
+    use std::{f64::consts::PI, sync::Arc};
 
     #[async_test]
     #[serial]
@@ -180,5 +226,21 @@ mod tests {
         let mut any = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
         any.connected().await;
         any.into_typed::<f64>().unwrap();
+    }
+
+    #[async_test]
+    #[serial]
+    async fn put_get() {
+        let ctx = Arc::new(Context::new().unwrap());
+
+        let mut output = AnyChannel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
+        output.connected().await;
+        let mut output = output.into_typed::<f64>().unwrap();
+        output.put(&PI).unwrap().await.unwrap();
+
+        let mut input = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
+        input.connected().await;
+        let mut input = input.into_typed::<f64>().unwrap();
+        assert_eq!(input.get_copy().await.unwrap(), PI);
     }
 }
