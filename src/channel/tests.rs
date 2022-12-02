@@ -1,5 +1,5 @@
 use crate::{
-    types::{DbField, EpicsString, Type},
+    types::{DbField, EpicsEnum, EpicsString, Type},
     Channel, Context,
 };
 use async_std::test as async_test;
@@ -45,15 +45,15 @@ async fn analog() {
 async fn binary() {
     let ctx = Context::new().unwrap();
     let mut output =
-        connect_and_check::<i16>(ctx.clone(), c_str!("ca:test:bo"), DbField::Enum, 1).await;
+        connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bo"), DbField::Enum, 1).await;
     let mut input =
-        connect_and_check::<i16>(ctx.clone(), c_str!("ca:test:bi"), DbField::Enum, 1).await;
+        connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bi"), DbField::Enum, 1).await;
 
-    output.put(&1).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), 1);
+    output.put(&EpicsEnum(1)).unwrap().await.unwrap();
+    assert_eq!(input.get_copy().await.unwrap(), EpicsEnum(1));
 
-    output.put(&0).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), 0);
+    output.put(&EpicsEnum(0)).unwrap().await.unwrap();
+    assert_eq!(input.get_copy().await.unwrap(), EpicsEnum(0));
 }
 
 #[async_test]
