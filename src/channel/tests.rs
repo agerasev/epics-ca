@@ -60,20 +60,28 @@ async fn binary() {
 #[serial]
 async fn string() {
     let ctx = Context::new().unwrap();
-    let mut _output = connect_and_check::<EpicsString>(
+    let mut output = connect_and_check::<EpicsString>(
         ctx.clone(),
         c_str!("ca:test:stringout"),
         DbField::String,
         1,
     )
     .await;
-    let mut _input = connect_and_check::<EpicsString>(
+    let mut input = connect_and_check::<EpicsString>(
         ctx.clone(),
         c_str!("ca:test:stringin"),
         DbField::String,
         1,
     )
     .await;
+
+    let data = EpicsString::from_cstr(c_str!("abcdefghijklmnopqrstuvwxyz")).unwrap();
+    output.put(&data).unwrap().await.unwrap();
+    assert_eq!(input.get_copy().await.unwrap(), data);
+
+    let data = EpicsString::from_cstr(c_str!("0123456789abcdefghijABCDEFGHIJ!@#$%^&*(")).unwrap();
+    output.put(&data).unwrap().await.unwrap();
+    assert_eq!(input.get_copy().await.unwrap(), data);
 }
 
 #[async_test]
