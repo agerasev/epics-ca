@@ -1,7 +1,7 @@
-mod string;
+mod enums;
 mod traits;
 mod wrappers;
 
-pub use string::*;
+pub use enums::*;
 pub use traits::*;
 pub use wrappers::*;

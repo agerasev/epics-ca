@@ -1,7 +1,7 @@
 use super::{AnyChannel, UserData};
 use crate::{
     error::{self, result_from_raw, Error},
-    types::{DbField, Type},
+    types::{DbField, Scalar, Type},
 };
 use std::{
     future::Future,
@@ -125,7 +125,7 @@ impl<T: Type + Default> Channel<T> {
         Ok(value)
     }
 }
-impl<T: Type + Default + Clone> Channel<[T]> {
+impl<T: Scalar + Default + Clone> Channel<[T]> {
     pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
         let mut data = vec![T::default(); self.count];
         let len = self.get(&mut data)?.await?;
@@ -193,7 +193,7 @@ impl<T: Type + ?Sized> Channel<T> {
             debug_assert!(T::match_field(
                 DbField::try_from_raw(args.type_ as _).unwrap()
             ));
-            T::copy_data(proc.data, args.dbr as _, count);
+            T::Element::copy_data(args.dbr as _, proc.data as *mut T::Element, count);
             proc.count = count;
         }
         proc.status = Some(status);
