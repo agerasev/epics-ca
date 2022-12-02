@@ -1,7 +1,8 @@
 use std::mem::transmute;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub enum AlarmSeverity {
+    #[default]
     None,
     Minor,
     Major,
@@ -33,8 +34,9 @@ impl AlarmSeverity {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub enum AlarmCondition {
+    #[default]
     None,
     Read,
     Write,
@@ -120,7 +122,7 @@ impl AlarmCondition {
     }
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct Alarm {
     pub severity: AlarmSeverity,
     pub condition: AlarmCondition,
