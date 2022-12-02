@@ -105,6 +105,7 @@ pub const CA_PRIORITY_DEFAULT: i32 = 0;
 pub const CA_PRIORITY_DB_LINKS: i32 = 80;
 pub const CA_PRIORITY_ARCHIVE: i32 = 20;
 pub const CA_PRIORITY_OPI: i32 = 0;
+pub const NO_ALARM: i32 = 0;
 pub type epicsThreadId = *mut epicsThreadOSD;
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -663,6 +664,42 @@ pub type CAFDHANDLER = ::core::option::Option<
 pub struct ca_client_context {
     _unused: [u8; 0],
 }
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum epicsAlarmSeverity {
+    epicsSevNone = 0,
+    epicsSevMinor = 1,
+    epicsSevMajor = 2,
+    epicsSevInvalid = 3,
+    ALARM_NSEV = 4,
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum epicsAlarmCondition {
+    epicsAlarmNone = 0,
+    epicsAlarmRead = 1,
+    epicsAlarmWrite = 2,
+    epicsAlarmHiHi = 3,
+    epicsAlarmHigh = 4,
+    epicsAlarmLoLo = 5,
+    epicsAlarmLow = 6,
+    epicsAlarmState = 7,
+    epicsAlarmCos = 8,
+    epicsAlarmComm = 9,
+    epicsAlarmTimeout = 10,
+    epicsAlarmHwLimit = 11,
+    epicsAlarmCalc = 12,
+    epicsAlarmScan = 13,
+    epicsAlarmLink = 14,
+    epicsAlarmSoft = 15,
+    epicsAlarmBadSub = 16,
+    epicsAlarmUDF = 17,
+    epicsAlarmDisable = 18,
+    epicsAlarmSimm = 19,
+    epicsAlarmReadAccess = 20,
+    epicsAlarmWriteAccess = 21,
+    ALARM_NSTATUS = 22,
+}
 extern "C" {
     pub static mut epicsTypeNames: [*const libc::c_char; 11usize];
     pub static mut epicsTypeCodeNames: [*const libc::c_char; 11usize];
@@ -840,4 +877,6 @@ extern "C" {
     ) -> libc::c_int;
     pub fn ca_modify_user_name(pUserName: *const libc::c_char) -> libc::c_int;
     pub fn ca_modify_host_name(pHostName: *const libc::c_char) -> libc::c_int;
+    pub static mut epicsAlarmSeverityStrings: [*const libc::c_char; 4usize];
+    pub static mut epicsAlarmConditionStrings: [*const libc::c_char; 22usize];
 }

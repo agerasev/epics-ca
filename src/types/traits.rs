@@ -1,40 +1,5 @@
-use super::{time_from_epics, DbField, EpicsEnum, EpicsString};
-use std::{mem::align_of, ptr::copy_nonoverlapping, time::SystemTime};
-
-trait LoadRaw {
-    type Raw;
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize);
-}
-
-pub struct Time<T: Type + ?Sized> {
-    //alarm: Alarm,
-    stamp: SystemTime,
-    value: T,
-}
-
-macro_rules! make_time {
-    ($ty:ty, $raw:ty) => {
-        impl LoadRaw for Time<$ty> {
-            type Raw = $raw;
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                // TODO: alarm
-                (*this).stamp = time_from_epics((*raw).stamp);
-                <$ty>::copy_data(
-                    &(*raw).value as *const _,
-                    &mut (*this).value as *mut _,
-                    count,
-                );
-            }
-        }
-    };
-}
-
-make_time!(u8, sys::dbr_time_char);
-make_time!(i16, sys::dbr_time_short);
-make_time!(EpicsEnum, sys::dbr_time_enum);
-make_time!(i32, sys::dbr_time_long);
-make_time!(f32, sys::dbr_time_float);
-make_time!(f64, sys::dbr_time_double);
+use super::{DbField, EpicsEnum, EpicsString};
+use std::{mem::align_of, ptr::copy_nonoverlapping};
 
 pub trait Scalar: Type + Sized {
     type Raw: Sized;
