@@ -11,10 +11,7 @@ pub trait AnyRequest {
 pub unsafe trait WriteRequest: AnyRequest {}
 
 pub trait ReadRequest: AnyRequest {
-    /// # Safety
-    ///
-    /// See [`copy_data`](`crate::types::Scalar::copy_data`).
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize);
+    fn load_raw(&mut self, raw: &Self::Raw, count: usize);
 }
 
 #[repr(transparent)]
@@ -46,8 +43,8 @@ impl AnyRequest for StsackString {
     const ENUM: DbRequest = DbRequest::PutAcks;
 }
 impl ReadRequest for StsackString {
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, _: usize) {
-        *this = StsackString(EpicsString::from_array(*raw).unwrap());
+    fn load_raw(&mut self, raw: &Self::Raw, _: usize) {
+        *self = StsackString(EpicsString::from_array(*raw).unwrap());
     }
 }
 
@@ -60,7 +57,7 @@ impl AnyRequest for ClassName {
     const ENUM: DbRequest = DbRequest::ClassName;
 }
 impl ReadRequest for ClassName {
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, _: usize) {
-        *this = ClassName(EpicsString::from_array(*raw).unwrap());
+    fn load_raw(&mut self, raw: &Self::Raw, _: usize) {
+        *self = ClassName(EpicsString::from_array(*raw).unwrap());
     }
 }

@@ -18,31 +18,35 @@ impl<T: Type + ?Sized> AnyRequest for T {
 }
 unsafe impl<T: Type + ?Sized> WriteRequest for T {}
 impl<T: Type + ?Sized> ReadRequest for T {
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-        <<Self as Type>::Element as Scalar>::copy_data(
-            raw,
-            this as *mut <Self as Type>::Element,
-            count,
-        );
+    fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+        unsafe {
+            <<Self as Type>::Element as Scalar>::copy_data(
+                raw as *const _,
+                self as *mut _ as *mut <Self as Type>::Element,
+                count,
+            );
+        }
     }
 }
 
 macro_rules! make_alarm {
     ($raw:expr) => {
         Alarm {
-            condition: AlarmCondition::try_from_raw((*$raw).status as _).unwrap(),
-            severity: AlarmSeverity::try_from_raw((*$raw).severity as _).unwrap(),
+            condition: AlarmCondition::try_from_raw($raw.status as _).unwrap(),
+            severity: AlarmSeverity::try_from_raw($raw.severity as _).unwrap(),
         }
     };
 }
 
 macro_rules! copy_value {
-    ($ty:ty, $this:expr, $raw:expr, $count:expr) => {
-        <<$ty as Type>::Element as Scalar>::copy_data(
-            &(*$raw).value as *const <<$ty as Type>::Element as Scalar>::Raw,
-            &mut (*$this).value as *mut $ty as *mut <$ty as Type>::Element,
-            $count,
-        );
+    ($ty:ty, $self:expr, $raw:expr, $count:expr) => {
+        unsafe {
+            <<$ty as Type>::Element as Scalar>::copy_data(
+                &$raw.value as *const <<$ty as Type>::Element as Scalar>::Raw,
+                &mut $self.value as *mut $ty as *mut <$ty as Type>::Element,
+                $count,
+            );
+        }
     };
 }
 
@@ -68,9 +72,9 @@ macro_rules! make_sts {
             const ENUM: DbRequest = DbRequest::Sts(<<$ty as Type>::Element as Scalar>::ENUM);
         }
         impl ReadRequest for Sts<$ty> {
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                (*this).alarm = make_alarm!(raw);
-                copy_value!($ty, this, raw, count);
+            fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+                self.alarm = make_alarm!(raw);
+                copy_value!($ty, self, raw, count);
             }
         }
     };
@@ -85,9 +89,9 @@ impl_all!(make_sts, f64, sys::dbr_sts_double);
 impl_all!(make_sts, EpicsString, sys::dbr_sts_string);
 
 pub struct Time<T: Type + ?Sized> {
-    alarm: Alarm,
-    stamp: SystemTime,
-    value: T,
+    pub alarm: Alarm,
+    pub stamp: SystemTime,
+    pub value: T,
 }
 
 macro_rules! make_time {
@@ -100,10 +104,10 @@ macro_rules! make_time {
             const ENUM: DbRequest = DbRequest::Time(<<$ty as Type>::Element as Scalar>::ENUM);
         }
         impl ReadRequest for Time<$ty> {
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                (*this).alarm = make_alarm!(raw);
-                (*this).stamp = time_from_epics((*raw).stamp);
-                copy_value!($ty, this, raw, count);
+            fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+                self.alarm = make_alarm!(raw);
+                self.stamp = time_from_epics(raw.stamp);
+                copy_value!($ty, self, raw, count);
             }
         }
     };
@@ -121,15 +125,15 @@ pub struct IntGr<T: Type + ?Sized>
 where
     T::Element: Primitive,
 {
-    alarm: Alarm,
-    units: StaticCString<8>,
-    upper_disp_limit: T::Element,
-    lower_disp_limit: T::Element,
-    upper_alarm_limit: T::Element,
-    upper_warning_limit: T::Element,
-    lower_warning_limit: T::Element,
-    lower_alarm_limit: T::Element,
-    value: T,
+    pub alarm: Alarm,
+    pub units: StaticCString<8>,
+    pub upper_disp_limit: T::Element,
+    pub lower_disp_limit: T::Element,
+    pub upper_alarm_limit: T::Element,
+    pub upper_warning_limit: T::Element,
+    pub lower_warning_limit: T::Element,
+    pub lower_alarm_limit: T::Element,
+    pub value: T,
 }
 
 macro_rules! make_int_gr {
@@ -142,22 +146,18 @@ macro_rules! make_int_gr {
             const ENUM: DbRequest = DbRequest::Gr(<<$ty as Type>::Element as Scalar>::ENUM);
         }
         impl ReadRequest for IntGr<$ty> {
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                (*this).alarm = make_alarm!(raw);
-                (*this).units = StaticCString::from_array((*raw).units).unwrap();
-                (*this).upper_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_disp_limit);
-                (*this).lower_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_disp_limit);
-                (*this).upper_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_alarm_limit);
-                (*this).upper_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_warning_limit);
-                (*this).lower_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_warning_limit);
-                (*this).lower_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_alarm_limit);
-                copy_value!($ty, this, raw, count);
+            fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+                self.alarm = make_alarm!(raw);
+                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
+                self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
+                self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
+                self.upper_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.upper_warning_limit);
+                self.lower_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.lower_warning_limit);
+                self.lower_alarm_limit = <$ty as Type>::Element::from_raw(raw.lower_alarm_limit);
+                copy_value!($ty, self, raw, count);
             }
         }
     };
@@ -171,16 +171,16 @@ pub struct FloatGr<T: Type + ?Sized>
 where
     T::Element: Primitive,
 {
-    alarm: Alarm,
-    precision: i16,
-    units: StaticCString<8>,
-    upper_disp_limit: T::Element,
-    lower_disp_limit: T::Element,
-    upper_alarm_limit: T::Element,
-    upper_warning_limit: T::Element,
-    lower_warning_limit: T::Element,
-    lower_alarm_limit: T::Element,
-    value: T,
+    pub alarm: Alarm,
+    pub precision: i16,
+    pub units: StaticCString<8>,
+    pub upper_disp_limit: T::Element,
+    pub lower_disp_limit: T::Element,
+    pub upper_alarm_limit: T::Element,
+    pub upper_warning_limit: T::Element,
+    pub lower_warning_limit: T::Element,
+    pub lower_alarm_limit: T::Element,
+    pub value: T,
 }
 
 macro_rules! make_float_gr {
@@ -193,23 +193,19 @@ macro_rules! make_float_gr {
             const ENUM: DbRequest = DbRequest::Gr(<<$ty as Type>::Element as Scalar>::ENUM);
         }
         impl ReadRequest for FloatGr<$ty> {
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                (*this).alarm = make_alarm!(raw);
-                (*this).precision = (*raw).precision;
-                (*this).units = StaticCString::from_array((*raw).units).unwrap();
-                (*this).upper_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_disp_limit);
-                (*this).lower_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_disp_limit);
-                (*this).upper_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_alarm_limit);
-                (*this).upper_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_warning_limit);
-                (*this).lower_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_warning_limit);
-                (*this).lower_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_alarm_limit);
-                copy_value!($ty, this, raw, count);
+            fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+                self.alarm = make_alarm!(raw);
+                self.precision = raw.precision;
+                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
+                self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
+                self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
+                self.upper_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.upper_warning_limit);
+                self.lower_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.lower_warning_limit);
+                self.lower_alarm_limit = <$ty as Type>::Element::from_raw(raw.lower_alarm_limit);
+                copy_value!($ty, self, raw, count);
             }
         }
     };
@@ -219,10 +215,10 @@ impl_all!(make_float_gr, f32, sys::dbr_gr_float);
 impl_all!(make_float_gr, f64, sys::dbr_gr_double);
 
 pub struct EnumGr<T: Type<Element = EpicsEnum> + ?Sized> {
-    alarm: Alarm,
-    no_str: <EpicsEnum as Scalar>::Raw,
-    strs: [StaticCString<26>; 16],
-    value: T,
+    pub alarm: Alarm,
+    pub no_str: <EpicsEnum as Scalar>::Raw,
+    pub strs: [StaticCString<26>; 16],
+    pub value: T,
 }
 
 impl<T: Type<Element = EpicsEnum> + ?Sized> Request for EnumGr<T> {
@@ -233,11 +229,11 @@ impl<T: Type<Element = EpicsEnum> + ?Sized> AnyRequest for EnumGr<T> {
     const ENUM: DbRequest = DbRequest::Gr(<<EpicsEnum as Type>::Element as Scalar>::ENUM);
 }
 impl<T: Type<Element = EpicsEnum> + ?Sized> ReadRequest for EnumGr<T> {
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-        (*this).alarm = make_alarm!(raw);
-        (*this).no_str = (*raw).no_str as u16;
-        (*this).strs = (*raw).strs.map(|s| StaticCString::from_array(s).unwrap());
-        copy_value!(T, this, raw, count);
+    fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+        self.alarm = make_alarm!(raw);
+        self.no_str = raw.no_str as u16;
+        self.strs = raw.strs.map(|s| StaticCString::from_array(s).unwrap());
+        copy_value!(T, self, raw, count);
     }
 }
 
@@ -245,17 +241,17 @@ pub struct IntCtrl<T: Type + ?Sized>
 where
     T::Element: Primitive,
 {
-    alarm: Alarm,
-    units: StaticCString<8>,
-    upper_disp_limit: T::Element,
-    lower_disp_limit: T::Element,
-    upper_alarm_limit: T::Element,
-    upper_warning_limit: T::Element,
-    lower_warning_limit: T::Element,
-    lower_alarm_limit: T::Element,
-    upper_ctrl_limit: T::Element,
-    lower_ctrl_limit: T::Element,
-    value: T,
+    pub alarm: Alarm,
+    pub units: StaticCString<8>,
+    pub upper_disp_limit: T::Element,
+    pub lower_disp_limit: T::Element,
+    pub upper_alarm_limit: T::Element,
+    pub upper_warning_limit: T::Element,
+    pub lower_warning_limit: T::Element,
+    pub lower_alarm_limit: T::Element,
+    pub upper_ctrl_limit: T::Element,
+    pub lower_ctrl_limit: T::Element,
+    pub value: T,
 }
 
 macro_rules! make_int_ctrl {
@@ -268,26 +264,20 @@ macro_rules! make_int_ctrl {
             const ENUM: DbRequest = DbRequest::Gr(<<$ty as Type>::Element as Scalar>::ENUM);
         }
         impl ReadRequest for IntCtrl<$ty> {
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                (*this).alarm = make_alarm!(raw);
-                (*this).units = StaticCString::from_array((*raw).units).unwrap();
-                (*this).upper_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_disp_limit);
-                (*this).lower_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_disp_limit);
-                (*this).upper_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_alarm_limit);
-                (*this).upper_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_warning_limit);
-                (*this).lower_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_warning_limit);
-                (*this).lower_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_alarm_limit);
-                (*this).upper_ctrl_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_ctrl_limit);
-                (*this).lower_ctrl_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_ctrl_limit);
-                copy_value!($ty, this, raw, count);
+            fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+                self.alarm = make_alarm!(raw);
+                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
+                self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
+                self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
+                self.upper_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.upper_warning_limit);
+                self.lower_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.lower_warning_limit);
+                self.lower_alarm_limit = <$ty as Type>::Element::from_raw(raw.lower_alarm_limit);
+                self.upper_ctrl_limit = <$ty as Type>::Element::from_raw(raw.upper_ctrl_limit);
+                self.lower_ctrl_limit = <$ty as Type>::Element::from_raw(raw.lower_ctrl_limit);
+                copy_value!($ty, self, raw, count);
             }
         }
     };
@@ -301,18 +291,18 @@ pub struct FloatCtrl<T: Type + ?Sized>
 where
     T::Element: Primitive,
 {
-    alarm: Alarm,
-    precision: i16,
-    units: StaticCString<8>,
-    upper_disp_limit: T::Element,
-    lower_disp_limit: T::Element,
-    upper_alarm_limit: T::Element,
-    upper_warning_limit: T::Element,
-    lower_warning_limit: T::Element,
-    lower_alarm_limit: T::Element,
-    upper_ctrl_limit: T::Element,
-    lower_ctrl_limit: T::Element,
-    value: T,
+    pub alarm: Alarm,
+    pub precision: i16,
+    pub units: StaticCString<8>,
+    pub upper_disp_limit: T::Element,
+    pub lower_disp_limit: T::Element,
+    pub upper_alarm_limit: T::Element,
+    pub upper_warning_limit: T::Element,
+    pub lower_warning_limit: T::Element,
+    pub lower_alarm_limit: T::Element,
+    pub upper_ctrl_limit: T::Element,
+    pub lower_ctrl_limit: T::Element,
+    pub value: T,
 }
 
 macro_rules! make_float_ctrl {
@@ -325,27 +315,21 @@ macro_rules! make_float_ctrl {
             const ENUM: DbRequest = DbRequest::Gr(<<$ty as Type>::Element as Scalar>::ENUM);
         }
         impl ReadRequest for FloatCtrl<$ty> {
-            unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-                (*this).alarm = make_alarm!(raw);
-                (*this).precision = (*raw).precision;
-                (*this).units = StaticCString::from_array((*raw).units).unwrap();
-                (*this).upper_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_disp_limit);
-                (*this).lower_disp_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_disp_limit);
-                (*this).upper_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_alarm_limit);
-                (*this).upper_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_warning_limit);
-                (*this).lower_warning_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_warning_limit);
-                (*this).lower_alarm_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_alarm_limit);
-                (*this).upper_ctrl_limit =
-                    <$ty as Type>::Element::from_raw((*raw).upper_ctrl_limit);
-                (*this).lower_ctrl_limit =
-                    <$ty as Type>::Element::from_raw((*raw).lower_ctrl_limit);
-                copy_value!($ty, this, raw, count);
+            fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+                self.alarm = make_alarm!(raw);
+                self.precision = raw.precision;
+                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
+                self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
+                self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
+                self.upper_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.upper_warning_limit);
+                self.lower_warning_limit =
+                    <$ty as Type>::Element::from_raw(raw.lower_warning_limit);
+                self.lower_alarm_limit = <$ty as Type>::Element::from_raw(raw.lower_alarm_limit);
+                self.upper_ctrl_limit = <$ty as Type>::Element::from_raw(raw.upper_ctrl_limit);
+                self.lower_ctrl_limit = <$ty as Type>::Element::from_raw(raw.lower_ctrl_limit);
+                copy_value!($ty, self, raw, count);
             }
         }
     };
@@ -355,10 +339,10 @@ impl_all!(make_float_ctrl, f32, sys::dbr_ctrl_float);
 impl_all!(make_float_ctrl, f64, sys::dbr_ctrl_double);
 
 pub struct EnumCtrl<T: Type<Element = EpicsEnum> + ?Sized> {
-    alarm: Alarm,
-    no_str: <EpicsEnum as Scalar>::Raw,
-    strs: [StaticCString<26>; 16],
-    value: T,
+    pub alarm: Alarm,
+    pub no_str: <EpicsEnum as Scalar>::Raw,
+    pub strs: [StaticCString<26>; 16],
+    pub value: T,
 }
 
 impl<T: Type<Element = EpicsEnum> + ?Sized> Request for EnumCtrl<T> {
@@ -369,10 +353,10 @@ impl<T: Type<Element = EpicsEnum> + ?Sized> AnyRequest for EnumCtrl<T> {
     const ENUM: DbRequest = DbRequest::Gr(<<EpicsEnum as Type>::Element as Scalar>::ENUM);
 }
 impl<T: Type<Element = EpicsEnum> + ?Sized> ReadRequest for EnumCtrl<T> {
-    unsafe fn load_raw(this: *mut Self, raw: *const Self::Raw, count: usize) {
-        (*this).alarm = make_alarm!(raw);
-        (*this).no_str = (*raw).no_str as u16;
-        (*this).strs = (*raw).strs.map(|s| StaticCString::from_array(s).unwrap());
-        copy_value!(T, this, raw, count);
+    fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
+        self.alarm = make_alarm!(raw);
+        self.no_str = raw.no_str as u16;
+        self.strs = raw.strs.map(|s| StaticCString::from_array(s).unwrap());
+        copy_value!(T, self, raw, count);
     }
 }
