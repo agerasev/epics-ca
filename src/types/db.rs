@@ -46,7 +46,8 @@ pub enum DbRequest {
     Time(DbField),
     Gr(DbField),
     Ctrl(DbField),
-    PutAck(bool),
+    PutAckt,
+    PutAcks,
     StsackString,
     ClassName,
 }
@@ -104,10 +105,8 @@ impl DbRequest {
                 DbField::Long => sys::DBR_CTRL_LONG,
                 DbField::Double => sys::DBR_CTRL_DOUBLE,
             },
-            DbRequest::PutAck(ts) => match ts {
-                false => sys::DBR_PUT_ACKT,
-                true => sys::DBR_PUT_ACKS,
-            },
+            DbRequest::PutAckt => sys::DBR_PUT_ACKT,
+            DbRequest::PutAcks => sys::DBR_PUT_ACKS,
             DbRequest::StsackString => sys::DBR_STSACK_STRING,
             DbRequest::ClassName => sys::DBR_CLASS_NAME,
         }
