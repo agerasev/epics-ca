@@ -2,6 +2,7 @@ use super::{DbField, EpicsEnum, EpicsString};
 use std::{
     mem::align_of,
     ptr::{self, copy_nonoverlapping},
+    slice::from_raw_parts,
 };
 
 pub trait Scalar: Type + Sized {
@@ -81,6 +82,11 @@ pub trait Type {
 
     fn as_ptr(&self) -> *const u8;
     fn as_mut_ptr(&mut self) -> *mut u8;
+
+    /// # Safety
+    ///
+    /// Pointer must be valid and `'a` must be appropriate.
+    unsafe fn from_ptr<'a>(data: *const u8, count: usize) -> &'a Self;
 }
 
 impl<T: Scalar> Type for T {
@@ -103,6 +109,11 @@ impl<T: Scalar> Type for T {
     fn as_mut_ptr(&mut self) -> *mut u8 {
         self as *mut _ as *mut u8
     }
+
+    unsafe fn from_ptr<'a>(data: *const u8, count: usize) -> &'a Self {
+        assert_eq!(count, 1);
+        &*(data as *const T)
+    }
 }
 
 impl<T: Scalar> Type for [T] {
@@ -124,6 +135,10 @@ impl<T: Scalar> Type for [T] {
     }
     fn as_mut_ptr(&mut self) -> *mut u8 {
         self.as_mut_ptr() as *mut u8
+    }
+
+    unsafe fn from_ptr<'a>(data: *const u8, count: usize) -> &'a Self {
+        from_raw_parts(data as *const T, count)
     }
 }
 

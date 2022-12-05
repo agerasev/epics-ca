@@ -130,17 +130,19 @@ impl UserData {
 
 pub(crate) struct ProcessData {
     id_counter: usize,
-    pub(crate) data: *mut u8,
-    pub(crate) count: usize,
+    pub(crate) callback: Option<*mut dyn Callback>,
     pub(crate) status: Option<Result<(), Error>>,
+}
+
+pub(crate) trait Callback {
+    fn process(self: Pin<&mut Self>, data: *const u8, count: usize);
 }
 
 impl ProcessData {
     fn new() -> Self {
         Self {
             id_counter: 0,
-            data: ptr::null_mut(),
-            count: 0,
+            callback: None,
             status: None,
         }
     }
