@@ -1,9 +1,16 @@
 use super::{AnyRequest, ReadRequest, WriteRequest};
 use crate::types::{
-    time_from_epics, Alarm, AlarmCondition, AlarmSeverity, DbRequest, EpicsEnum, EpicsString,
+    Alarm, AlarmCondition, AlarmSeverity, DbRequest, EpicsEnum, EpicsString, EpicsTimeStamp,
     Primitive, Scalar, StaticCString, Type,
 };
-use std::time::SystemTime;
+
+pub const MAX_UNITS_SIZE: usize = sys::MAX_UNITS_SIZE as usize;
+pub const MAX_ENUM_STRING_SIZE: usize = sys::MAX_ENUM_STRING_SIZE as usize;
+pub const MAX_ENUM_STATES: usize = sys::MAX_ENUM_STATES as usize;
+
+#[repr(align(4))]
+#[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
+pub struct Units(pub StaticCString<MAX_UNITS_SIZE>);
 
 pub trait Request: AnyRequest {
     type Type: Type + ?Sized;
@@ -90,7 +97,7 @@ impl_all!(make_sts, EpicsString, sys::dbr_sts_string);
 
 pub struct Time<T: Type + ?Sized> {
     pub alarm: Alarm,
-    pub stamp: SystemTime,
+    pub stamp: EpicsTimeStamp,
     pub value: T,
 }
 
@@ -106,7 +113,7 @@ macro_rules! make_time {
         impl ReadRequest for Time<$ty> {
             fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
                 self.alarm = make_alarm!(raw);
-                self.stamp = time_from_epics(raw.stamp);
+                self.stamp = EpicsTimeStamp(raw.stamp);
                 copy_value!($ty, self, raw, count);
             }
         }
@@ -126,7 +133,7 @@ where
     T::Element: Primitive,
 {
     pub alarm: Alarm,
-    pub units: StaticCString<8>,
+    pub units: Units,
     pub upper_disp_limit: T::Element,
     pub lower_disp_limit: T::Element,
     pub upper_alarm_limit: T::Element,
@@ -148,7 +155,7 @@ macro_rules! make_int_gr {
         impl ReadRequest for IntGr<$ty> {
             fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
                 self.alarm = make_alarm!(raw);
-                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.units = Units(StaticCString::from_array(raw.units).unwrap());
                 self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
                 self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
                 self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
@@ -173,7 +180,7 @@ where
 {
     pub alarm: Alarm,
     pub precision: i16,
-    pub units: StaticCString<8>,
+    pub units: Units,
     pub upper_disp_limit: T::Element,
     pub lower_disp_limit: T::Element,
     pub upper_alarm_limit: T::Element,
@@ -196,7 +203,7 @@ macro_rules! make_float_gr {
             fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
                 self.alarm = make_alarm!(raw);
                 self.precision = raw.precision;
-                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.units = Units(StaticCString::from_array(raw.units).unwrap());
                 self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
                 self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
                 self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
@@ -216,8 +223,8 @@ impl_all!(make_float_gr, f64, sys::dbr_gr_double);
 
 pub struct EnumGr<T: Type<Element = EpicsEnum> + ?Sized> {
     pub alarm: Alarm,
-    pub no_str: <EpicsEnum as Scalar>::Raw,
-    pub strs: [StaticCString<26>; 16],
+    pub no_str: u16,
+    pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
     pub value: T,
 }
 
@@ -242,7 +249,7 @@ where
     T::Element: Primitive,
 {
     pub alarm: Alarm,
-    pub units: StaticCString<8>,
+    pub units: Units,
     pub upper_disp_limit: T::Element,
     pub lower_disp_limit: T::Element,
     pub upper_alarm_limit: T::Element,
@@ -266,7 +273,7 @@ macro_rules! make_int_ctrl {
         impl ReadRequest for IntCtrl<$ty> {
             fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
                 self.alarm = make_alarm!(raw);
-                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.units = Units(StaticCString::from_array(raw.units).unwrap());
                 self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
                 self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
                 self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
@@ -293,7 +300,7 @@ where
 {
     pub alarm: Alarm,
     pub precision: i16,
-    pub units: StaticCString<8>,
+    pub units: Units,
     pub upper_disp_limit: T::Element,
     pub lower_disp_limit: T::Element,
     pub upper_alarm_limit: T::Element,
@@ -318,7 +325,7 @@ macro_rules! make_float_ctrl {
             fn load_raw(&mut self, raw: &Self::Raw, count: usize) {
                 self.alarm = make_alarm!(raw);
                 self.precision = raw.precision;
-                self.units = StaticCString::from_array(raw.units).unwrap();
+                self.units = Units(StaticCString::from_array(raw.units).unwrap());
                 self.upper_disp_limit = <$ty as Type>::Element::from_raw(raw.upper_disp_limit);
                 self.lower_disp_limit = <$ty as Type>::Element::from_raw(raw.lower_disp_limit);
                 self.upper_alarm_limit = <$ty as Type>::Element::from_raw(raw.upper_alarm_limit);
@@ -340,8 +347,8 @@ impl_all!(make_float_ctrl, f64, sys::dbr_ctrl_double);
 
 pub struct EnumCtrl<T: Type<Element = EpicsEnum> + ?Sized> {
     pub alarm: Alarm,
-    pub no_str: <EpicsEnum as Scalar>::Raw,
-    pub strs: [StaticCString<26>; 16],
+    pub no_str: u16,
+    pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
     pub value: T,
 }
 

@@ -1,3 +1,4 @@
+use chrono::{TimeZone, Utc};
 use std::{
     cmp::Ordering,
     ffi::{c_char, CStr},
@@ -10,9 +11,45 @@ use std::{
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EpicsEnum(pub u16);
 
-pub fn time_from_epics(ets: sys::epicsTimeStamp) -> SystemTime {
-    SystemTime::UNIX_EPOCH
-        + (Duration::from_secs(ets.secPastEpoch as u64) + Duration::from_nanos(ets.nsec as u64))
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug)]
+pub struct EpicsTimeStamp(pub sys::epicsTimeStamp);
+
+impl EpicsTimeStamp {
+    pub fn to_system(self) -> SystemTime {
+        let unix_epoch = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap();
+        let epics_epoch = Utc.with_ymd_and_hms(1990, 1, 1, 0, 0, 0).unwrap();
+        let diff = (epics_epoch - unix_epoch).to_std().unwrap();
+        SystemTime::UNIX_EPOCH
+            + diff
+            + (Duration::from_secs(self.0.secPastEpoch as u64)
+                + Duration::from_nanos(self.0.nsec as u64))
+    }
+}
+
+impl PartialEq for EpicsTimeStamp {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.secPastEpoch == other.0.secPastEpoch && self.0.nsec == other.0.nsec
+    }
+}
+
+impl Eq for EpicsTimeStamp {}
+
+impl PartialOrd for EpicsTimeStamp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for EpicsTimeStamp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let o = self.0.secPastEpoch.cmp(&other.0.secPastEpoch);
+        if matches!(o, Ordering::Equal) {
+            self.0.nsec.cmp(&other.0.nsec)
+        } else {
+            o
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq)]
