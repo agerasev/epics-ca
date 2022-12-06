@@ -1,20 +1,21 @@
 use std::mem::transmute;
 
+#[repr(u16)]
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub enum AlarmSeverity {
     #[default]
-    None,
+    None = 0,
     Minor,
     Major,
     Invalid,
 }
 
 impl AlarmSeverity {
-    pub fn try_from_raw(raw: i32) -> Option<Self> {
-        if !(0..(sys::epicsAlarmSeverity::ALARM_NSEV as i32)).contains(&raw) {
+    pub fn try_from_raw(raw: u16) -> Option<Self> {
+        if !(0..(sys::epicsAlarmSeverity::ALARM_NSEV as u16)).contains(&raw) {
             return None;
         }
-        let sev = unsafe { transmute::<_, sys::epicsAlarmSeverity>(raw) };
+        let sev = unsafe { transmute::<u32, sys::epicsAlarmSeverity>(raw as _) };
         Some(match sev {
             sys::epicsAlarmSeverity::epicsSevNone => AlarmSeverity::None,
             sys::epicsAlarmSeverity::epicsSevMinor => AlarmSeverity::Minor,
@@ -34,10 +35,11 @@ impl AlarmSeverity {
     }
 }
 
+#[repr(u16)]
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub enum AlarmCondition {
     #[default]
-    None,
+    None = 0,
     Read,
     Write,
     HiHi,
@@ -54,7 +56,7 @@ pub enum AlarmCondition {
     Link,
     Soft,
     BadSub,
-    UDF,
+    Udf,
     Disable,
     Simm,
     ReadAccess,
@@ -62,11 +64,11 @@ pub enum AlarmCondition {
 }
 
 impl AlarmCondition {
-    pub fn try_from_raw(raw: i32) -> Option<Self> {
-        if !(0..(sys::epicsAlarmCondition::ALARM_NSTATUS as i32)).contains(&raw) {
+    pub fn try_from_raw(raw: u16) -> Option<Self> {
+        if !(0..(sys::epicsAlarmCondition::ALARM_NSTATUS as u16)).contains(&raw) {
             return None;
         }
-        let sev = unsafe { transmute::<_, sys::epicsAlarmCondition>(raw) };
+        let sev = unsafe { transmute::<u32, sys::epicsAlarmCondition>(raw as _) };
         Some(match sev {
             sys::epicsAlarmCondition::epicsAlarmNone => AlarmCondition::None,
             sys::epicsAlarmCondition::epicsAlarmRead => AlarmCondition::Read,
@@ -85,7 +87,7 @@ impl AlarmCondition {
             sys::epicsAlarmCondition::epicsAlarmLink => AlarmCondition::Link,
             sys::epicsAlarmCondition::epicsAlarmSoft => AlarmCondition::Soft,
             sys::epicsAlarmCondition::epicsAlarmBadSub => AlarmCondition::BadSub,
-            sys::epicsAlarmCondition::epicsAlarmUDF => AlarmCondition::UDF,
+            sys::epicsAlarmCondition::epicsAlarmUDF => AlarmCondition::Udf,
             sys::epicsAlarmCondition::epicsAlarmDisable => AlarmCondition::Disable,
             sys::epicsAlarmCondition::epicsAlarmSimm => AlarmCondition::Simm,
             sys::epicsAlarmCondition::epicsAlarmReadAccess => AlarmCondition::ReadAccess,
@@ -113,7 +115,7 @@ impl AlarmCondition {
             AlarmCondition::Link => sys::epicsAlarmCondition::epicsAlarmLink,
             AlarmCondition::Soft => sys::epicsAlarmCondition::epicsAlarmSoft,
             AlarmCondition::BadSub => sys::epicsAlarmCondition::epicsAlarmBadSub,
-            AlarmCondition::UDF => sys::epicsAlarmCondition::epicsAlarmUDF,
+            AlarmCondition::Udf => sys::epicsAlarmCondition::epicsAlarmUDF,
             AlarmCondition::Disable => sys::epicsAlarmCondition::epicsAlarmDisable,
             AlarmCondition::Simm => sys::epicsAlarmCondition::epicsAlarmSimm,
             AlarmCondition::ReadAccess => sys::epicsAlarmCondition::epicsAlarmReadAccess,
@@ -122,8 +124,9 @@ impl AlarmCondition {
     }
 }
 
+#[repr(C)]
 #[derive(Debug, Clone, Default, Hash)]
 pub struct Alarm {
-    pub severity: AlarmSeverity,
     pub condition: AlarmCondition,
+    pub severity: AlarmSeverity,
 }
