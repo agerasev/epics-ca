@@ -1,4 +1,4 @@
-use super::{Channel, UserData};
+use super::{TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{DbField, Scalar, Type},
@@ -10,11 +10,11 @@ use std::{
     marker::PhantomData,
     mem,
     pin::Pin,
-    ptr,
+    ptr, slice,
     task::{Context, Poll},
 };
 
-enum GetState<T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
+enum GetState<T: Scalar, F: FnOnce(&[T]) -> R + Send, R> {
     Empty,
     Pending(F, PhantomData<T>),
     Ready(R),
@@ -22,16 +22,16 @@ enum GetState<T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
 
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Get<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
-    owner: &'a mut Channel<T>,
+pub struct Get<'a, T: Scalar, F: FnOnce(&[T]) -> R + Send, R> {
+    owner: &'a mut TypedChannel<T>,
     /// Must be locked by `owner.user_data().process` mutex
     #[pin]
     state: UnsafeCell<GetState<T, F, R>>,
     started: bool,
 }
 
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
-    fn new(owner: &'a mut Channel<T>, func: F) -> Self {
+impl<'a, T: Scalar, F: FnOnce(&[T]) -> R + Send, R> Get<'a, T, F, R> {
+    fn new(owner: &'a mut TypedChannel<T>, func: F) -> Self {
         Self {
             owner,
             state: UnsafeCell::new(GetState::Pending(func, PhantomData)),
@@ -48,8 +48,8 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
             proc.state = this.state.get() as *mut u8;
             result_from_raw(unsafe {
                 sys::ca_array_get_callback(
-                    owner.dbf as _,
-                    owner.count as _,
+                    T::ENUM.raw() as _,
+                    0,
                     owner.raw(),
                     Some(Self::callback),
                     proc.id() as _,
@@ -80,8 +80,8 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
             debug_assert!(T::match_field(
                 DbField::try_from_raw(args.type_ as _).unwrap()
             ));
-            *state = GetState::Ready(func(T::from_raw(
-                args.dbr as *const <T::Element as Scalar>::Raw,
+            *state = GetState::Ready(func(slice::from_raw_parts(
+                args.dbr as *const T,
                 args.count as usize,
             )));
         }
@@ -90,7 +90,7 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
     }
 }
 
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Future for Get<'a, T, F, R> {
+impl<'a, T: Scalar, F: FnOnce(&[T]) -> R + Send, R> Future for Get<'a, T, F, R> {
     type Output = Result<R, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.owner.user_data().waker.register(cx.waker());
@@ -115,7 +115,7 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Future for Get<'a, T, F
 }
 
 #[pinned_drop]
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> PinnedDrop for Get<'a, T, F, R> {
+impl<'a, T: Scalar, F: FnOnce(&[T]) -> R + Send, R> PinnedDrop for Get<'a, T, F, R> {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
@@ -125,19 +125,15 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> PinnedDrop for Get<'a, 
     }
 }
 
-impl<T: Type + ?Sized> Channel<T> {
-    pub async fn get_with<F: FnOnce(&T) -> R + Send, R>(&mut self, func: F) -> Result<R, Error> {
+impl<T: Scalar> TypedChannel<T> {
+    pub async fn get_with<F: FnOnce(&[T]) -> R + Send, R>(&mut self, func: F) -> Result<R, Error> {
         Get::new(self, func).await
     }
-}
 
-impl<T: Scalar> Channel<T> {
-    pub async fn get(&mut self) -> Result<T, Error> {
-        self.get_with(|x| x.clone()).await
+    pub async fn get_single(&mut self) -> Result<T, Error> {
+        self.get_with(|x| x[0].clone()).await
     }
-}
 
-impl<T: Scalar> Channel<[T]> {
     pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {
         self.get_with(|src| {
             dst.copy_from(src);

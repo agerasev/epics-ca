@@ -19,14 +19,14 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct AnyChannel {
+pub struct Channel {
     ctx: Arc<Context>,
     raw: <sys::chanId as Ptr>::NonNull,
 }
 
-unsafe impl Send for AnyChannel where Context: Send {}
+unsafe impl Send for Channel where Context: Send {}
 
-impl AnyChannel {
+impl Channel {
     /// Create channel without waiting for connection.
     pub fn new(ctx: Arc<Context>, name: &CStr) -> Result<Self, Error> {
         ctx.clone().with(|| {
@@ -45,7 +45,7 @@ impl AnyChannel {
             }) {
                 Ok(()) => {
                     ctx.flush_io();
-                    Ok(AnyChannel {
+                    Ok(Channel {
                         ctx,
                         raw: NonNull::new(raw).unwrap(),
                     })
@@ -103,7 +103,7 @@ impl AnyChannel {
     }
 }
 
-impl Drop for AnyChannel {
+impl Drop for Channel {
     fn drop(&mut self) {
         self.context().with(|| {
             let puser = self.user_data() as *const _ as *mut UserData;
@@ -131,11 +131,11 @@ impl UserData {
 
 #[must_use]
 pub struct Connected<'a> {
-    channel: Option<&'a mut AnyChannel>,
+    channel: Option<&'a mut Channel>,
 }
 
 impl<'a> Connected<'a> {
-    fn new(channel: &'a mut AnyChannel) -> Self {
+    fn new(channel: &'a mut Channel) -> Self {
         Connected {
             channel: Some(channel),
         }
@@ -162,7 +162,7 @@ impl<'a> FusedFuture for Connected<'a> {
     }
 }
 
-impl AnyChannel {
+impl Channel {
     unsafe extern "C" fn connect_callback(args: sys::connection_handler_args) {
         println!("connect_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
@@ -180,7 +180,7 @@ impl AnyChannel {
 
 #[cfg(test)]
 mod tests {
-    use crate::{AnyChannel, Context};
+    use crate::{Channel, Context};
     use async_std::{task::sleep, test as async_test};
     use c_str_macro::c_str;
     use futures::{select, FutureExt};
@@ -191,7 +191,7 @@ mod tests {
     #[serial]
     async fn connect() {
         let ctx = Context::new().unwrap();
-        AnyChannel::new(ctx, c_str!("ca:test:ai"))
+        Channel::new(ctx, c_str!("ca:test:ai"))
             .unwrap()
             .connected()
             .await;
@@ -199,7 +199,7 @@ mod tests {
 
     #[async_test]
     async fn connect_nonexistent() {
-        let mut chan = AnyChannel::new(Context::new().unwrap(), c_str!("__nonexistent__")).unwrap();
+        let mut chan = Channel::new(Context::new().unwrap(), c_str!("__nonexistent__")).unwrap();
         select! {
             _ = chan.connected() => panic!(),
             _ = sleep(Duration::from_millis(100)).fuse() => (),
@@ -210,7 +210,7 @@ mod tests {
     #[serial]
     async fn user_data() {
         let ctx = Context::new().unwrap();
-        let mut channel = AnyChannel::new(ctx.clone(), c_str!("ca:test:ai")).unwrap();
+        let mut channel = Channel::new(ctx.clone(), c_str!("ca:test:ai")).unwrap();
         channel.connected().await;
 
         // Test that user data can be accessed without context attachment.

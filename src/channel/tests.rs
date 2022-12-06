@@ -1,6 +1,6 @@
 use crate::{
     types::{DbField, EpicsEnum, EpicsString, Type},
-    Channel, Context,
+    Context, TypedChannel,
 };
 use async_std::test as async_test;
 use c_str_macro::c_str;
@@ -16,7 +16,7 @@ async fn connect_and_check<T: Type + ?Sized>(
     name: &CStr,
     dbf: DbField,
     count: usize,
-) -> Channel<T> {
+) -> TypedChannel<T> {
     let chan = ctx.connect(name).await.unwrap();
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), dbf);

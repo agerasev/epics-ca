@@ -6,9 +6,6 @@ pub trait Scalar: Type + Sized + Clone {
 
     const ENUM: DbField;
 
-    fn matches(dbf: DbField) -> bool {
-        dbf == Self::ENUM
-    }
     fn from_raw(raw: <Self as Scalar>::Raw) -> Self {
         unsafe { ptr::read(&raw as *const _ as *const Self) }
     }
@@ -77,7 +74,7 @@ impl<T: Scalar> Type for T {
     type Element = T;
 
     fn match_field(dbf: DbField) -> bool {
-        Self::matches(dbf)
+        Self::ENUM == dbf
     }
     fn match_count(count: usize) -> bool {
         count == 1
