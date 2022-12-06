@@ -1,3 +1,4 @@
+use super::ProcessData;
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
@@ -125,32 +126,6 @@ impl UserData {
             waker: AtomicWaker::new(),
             process: Mutex::new(ProcessData::new()),
         }
-    }
-}
-
-pub(crate) struct ProcessData {
-    id_counter: usize,
-    pub(crate) callback: Option<*mut dyn Callback>,
-    pub(crate) status: Option<Result<(), Error>>,
-}
-
-pub(crate) trait Callback {
-    fn process(self: Pin<&mut Self>, data: *const u8, count: usize);
-}
-
-impl ProcessData {
-    fn new() -> Self {
-        Self {
-            id_counter: 0,
-            callback: None,
-            status: None,
-        }
-    }
-    pub(crate) fn id(&self) -> usize {
-        self.id_counter
-    }
-    pub(crate) fn change_id(&mut self) {
-        self.id_counter += 1;
     }
 }
 

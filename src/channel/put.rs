@@ -19,17 +19,28 @@ impl<T: Type + ?Sized> Channel<T> {
                         self.dbf as _,
                         data.element_count() as _,
                         self.raw(),
-                        data.as_ptr() as _,
-                        Some(Self::put_callback),
+                        data as *const T as _,
+                        Some(Self::callback),
                         proc.id() as _,
                     )
                 })
                 .map(|()| {
                     self.context().flush_io();
-                    proc.status = None;
+                    proc.result = None;
                 })
             })
             .map(|()| Put { owner: self })
+    }
+
+    unsafe extern "C" fn callback(args: sys::event_handler_args) {
+        println!("put_callback: {:?}", args);
+        let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
+        let mut proc = user_data.process.lock().unwrap();
+        if proc.id() != args.usr as usize {
+            return;
+        }
+        proc.result = Some(result_from_raw(args.status));
+        user_data.waker.wake();
     }
 }
 
@@ -45,7 +56,7 @@ impl<'a, T: Type + ?Sized> Future for Put<'a, T> {
         let user_data = self.owner.user_data();
         user_data.waker.register(cx.waker());
         let mut proc = user_data.process.lock().unwrap();
-        match proc.status.take() {
+        match proc.result.take() {
             Some(status) => Poll::Ready(status),
             None => Poll::Pending,
         }
@@ -54,19 +65,8 @@ impl<'a, T: Type + ?Sized> Future for Put<'a, T> {
 
 impl<'a, T: Type + ?Sized> Drop for Put<'a, T> {
     fn drop(&mut self) {
-        self.owner.user_data().process.lock().unwrap().change_id();
-    }
-}
-
-impl<T: Type + ?Sized> Channel<T> {
-    unsafe extern "C" fn put_callback(args: sys::event_handler_args) {
-        println!("put_callback: {:?}", args);
-        let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
-        let mut proc = user_data.process.lock().unwrap();
-        if proc.id() != args.usr as usize {
-            return;
-        }
-        proc.status = Some(result_from_raw(args.status));
-        user_data.waker.wake();
+        let mut proc = self.owner.user_data().process.lock().unwrap();
+        proc.change_id();
+        proc.result = None;
     }
 }

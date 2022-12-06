@@ -6,6 +6,7 @@ use crate::{
 use std::{
     marker::PhantomData,
     ops::{Deref, DerefMut},
+    ptr,
 };
 
 impl AnyChannel {
@@ -67,6 +68,28 @@ impl<T: ?Sized> DerefMut for Channel<T> {
     }
 }
 
+pub(crate) struct ProcessData {
+    id_counter: usize,
+    pub(crate) result: Option<Result<(), Error>>,
+    pub(crate) state: *mut u8,
+}
+
+impl ProcessData {
+    pub fn new() -> Self {
+        Self {
+            id_counter: 0,
+            result: None,
+            state: ptr::null_mut(),
+        }
+    }
+    pub fn id(&self) -> usize {
+        self.id_counter
+    }
+    pub fn change_id(&mut self) {
+        self.id_counter += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{AnyChannel, Context};
@@ -97,6 +120,6 @@ mod tests {
         let mut input = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
         input.connected().await;
         let mut input = input.into_typed::<f64>().unwrap();
-        assert_eq!(input.get_copy().await.unwrap(), PI);
+        assert_eq!(input.get().await.unwrap(), PI);
     }
 }

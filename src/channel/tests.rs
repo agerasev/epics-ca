@@ -34,10 +34,10 @@ async fn analog() {
         connect_and_check::<f64>(ctx.clone(), c_str!("ca:test:ai"), DbField::Double, 1).await;
 
     output.put(&E).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), E);
+    assert_eq!(input.get().await.unwrap(), E);
 
     output.put(&PI).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), PI);
+    assert_eq!(input.get().await.unwrap(), PI);
 }
 
 #[async_test]
@@ -50,10 +50,10 @@ async fn binary() {
         connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bi"), DbField::Enum, 1).await;
 
     output.put(&EpicsEnum(1)).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), EpicsEnum(1));
+    assert_eq!(input.get().await.unwrap(), EpicsEnum(1));
 
     output.put(&EpicsEnum(0)).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), EpicsEnum(0));
+    assert_eq!(input.get().await.unwrap(), EpicsEnum(0));
 }
 
 #[async_test]
@@ -77,11 +77,11 @@ async fn string() {
 
     let data = EpicsString::from_cstr(c_str!("abcdefghijklmnopqrstuvwxyz")).unwrap();
     output.put(&data).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), data);
+    assert_eq!(input.get().await.unwrap(), data);
 
     let data = EpicsString::from_cstr(c_str!("0123456789abcdefghijABCDEFGHIJ!@#$%^&*(")).unwrap();
     output.put(&data).unwrap().await.unwrap();
-    assert_eq!(input.get_copy().await.unwrap(), data);
+    assert_eq!(input.get().await.unwrap(), data);
 }
 
 #[async_test]
@@ -100,7 +100,7 @@ async fn array() {
 
     let data = (0..42).collect::<Vec<_>>();
     output.put(&data).unwrap().await.unwrap();
-    let len = nord.get_copy().await.unwrap() as usize;
+    let len = nord.get().await.unwrap() as usize;
     assert_eq!(len, data.len());
     assert_eq!(input.get_vec().await.unwrap()[..len], data);
 

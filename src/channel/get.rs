@@ -1,132 +1,152 @@
-use super::{Callback, Channel, UserData};
+use super::{Channel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{DbField, Scalar, Type},
 };
+use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
     future::Future,
     marker::PhantomData,
     mem,
     pin::Pin,
+    ptr,
     task::{Context, Poll},
 };
 
-impl<T: Type + ?Sized> Channel<T> {
-    pub async fn get_with<F: FnOnce(&T) -> R, R>(&mut self, func: F) -> Result<R, Error> {
-        Get::new(self, func).await
-    }
-}
-/*
-impl<T: Type + Default> Channel<T> {
-    pub async fn get_copy(&mut self) -> Result<T, Error> {
-        let mut value = T::default();
-        assert_eq!(self.get(&mut value)?.await?, 1);
-        Ok(value)
-    }
-}
-impl<T: Scalar + Default + Clone> Channel<[T]> {
-    pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
-        let mut data = vec![T::default(); self.count];
-        let len = self.get(&mut data)?.await?;
-        data.truncate(len);
-        Ok(data)
-    }
-}
-*/
-
-enum GetState<T: Type + ?Sized, F: FnOnce(&T) -> R, R> {
-    Waiting(F),
-    Complete(R, PhantomData<T>),
+enum GetState<T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
+    Empty,
+    Pending(F, PhantomData<T>),
+    Ready(R),
 }
 
 #[must_use]
-pub struct Get<'a, T: Type + ?Sized, F: FnOnce(&T) -> R, R> {
+#[pin_project(PinnedDrop)]
+pub struct Get<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
     owner: &'a mut Channel<T>,
     /// Must be locked by `owner.user_data().process` mutex
-    callback: UnsafeCell<GetState<T, F, R>>,
+    #[pin]
+    state: UnsafeCell<GetState<T, F, R>>,
     started: bool,
 }
 
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R, R> Get<'a, T, F, R> {
+impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
     fn new(owner: &'a mut Channel<T>, func: F) -> Self {
         Self {
             owner,
-            callback: UnsafeCell::new(GetState::Waiting(func)),
+            state: UnsafeCell::new(GetState::Pending(func, PhantomData)),
             started: false,
         }
     }
 
     fn start(self: Pin<&mut Self>) -> Result<(), Error> {
         assert!(!self.started);
-        let mut owner = self.owner;
+        let this = self.project();
+        let owner = this.owner;
         owner.context().with(|| {
             let mut proc = owner.user_data().process.lock().unwrap();
-            proc.callback = Some(self.callback.get_mut() as *mut dyn Callback);
+            proc.state = this.state.get() as *mut u8;
             result_from_raw(unsafe {
                 sys::ca_array_get_callback(
                     owner.dbf as _,
                     owner.count as _,
                     owner.raw(),
-                    Some(Self::get_callback),
+                    Some(Self::callback),
                     proc.id() as _,
                 )
             })
             .map(|()| {
                 owner.context().flush_io();
-                proc.status = None;
-                self.started = true
+                proc.result = None;
+                *this.started = true
             })
         })
     }
 
-    unsafe extern "C" fn get_callback(args: sys::event_handler_args) {
+    unsafe extern "C" fn callback(args: sys::event_handler_args) {
         println!("get_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
         let mut proc = user_data.process.lock().unwrap();
         if proc.id() != args.usr as usize {
             return;
         }
-        let status = result_from_raw(args.status);
-        let callback = Pin::new_unchecked(&mut *(proc.callback.take().unwrap()));
-        if status.is_ok() {
+        let result = result_from_raw(args.status);
+        let state = &mut *(proc.state as *mut GetState<T, F, R>);
+        let func = match mem::replace(state, GetState::Empty) {
+            GetState::Pending(func, _) => func,
+            _ => unreachable!(),
+        };
+        if result.is_ok() {
             debug_assert!(T::match_field(
                 DbField::try_from_raw(args.type_ as _).unwrap()
             ));
-            callback.process(args.dbr as *const u8, args.count as usize);
+            *state = GetState::Ready(func(T::from_raw(
+                args.dbr as *const <T::Element as Scalar>::Raw,
+                args.count as usize,
+            )));
         }
-        proc.status = Some(status);
+        proc.result = Some(result);
         user_data.waker.wake();
     }
 }
 
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R, R> Future for Get<'a, T, F, R> {
+impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Future for Get<'a, T, F, R> {
     type Output = Result<R, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let user_data = self.owner.user_data();
-        user_data.waker.register(cx.waker());
-        let mut proc = user_data.process.lock().unwrap();
-        match proc.status.take() {
-            Some(status) => Poll::Ready(status.map(|()| proc.count)),
-            None => Poll::Pending,
+        self.owner.user_data().waker.register(cx.waker());
+        if !self.started {
+            self.start()?;
+            return Poll::Pending;
         }
-    }
-}
-
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R, R> Drop for Get<'a, T, F, R> {
-    fn drop(&mut self) {
-        self.owner.user_data().process.lock().unwrap().change_id();
-    }
-}
-
-impl<T: Type + ?Sized, F: FnOnce(&T) -> R, R> Callback for GetState<T, F, R> {
-    fn process(mut self: Pin<&mut Self>, data: *const u8, count: usize) {
-        *self = GetState::Complete(
-            match unsafe { self.get_unchecked_mut() } {
-                GetState::Waiting(f) => f(unsafe { T::from_ptr(data, count) }),
+        let this = self.project();
+        let mut proc = this.owner.user_data().process.lock().unwrap();
+        let state = unsafe { &mut *this.state.get() };
+        let poll = match proc.result.take() {
+            Some(Ok(())) => match mem::replace(state, GetState::Empty) {
+                GetState::Ready(ret) => Poll::Ready(Ok(ret)),
                 _ => unreachable!(),
             },
-            PhantomData,
-        );
+            Some(Err(err)) => Poll::Ready(Err(err)),
+            None => Poll::Pending,
+        };
+        drop(proc);
+        poll
+    }
+}
+
+#[pinned_drop]
+impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> PinnedDrop for Get<'a, T, F, R> {
+    #[allow(clippy::needless_lifetimes)]
+    fn drop(self: Pin<&mut Self>) {
+        let mut proc = self.owner.user_data().process.lock().unwrap();
+        proc.change_id();
+        proc.state = ptr::null_mut();
+        proc.result = None;
+    }
+}
+
+impl<T: Type + ?Sized> Channel<T> {
+    pub async fn get_with<F: FnOnce(&T) -> R + Send, R>(&mut self, func: F) -> Result<R, Error> {
+        Get::new(self, func).await
+    }
+}
+
+impl<T: Scalar> Channel<T> {
+    pub async fn get(&mut self) -> Result<T, Error> {
+        self.get_with(|x| x.clone()).await
+    }
+}
+
+impl<T: Scalar> Channel<[T]> {
+    pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {
+        self.get_with(|src| {
+            dst.copy_from(src);
+            src.element_count()
+        })
+        .await
+    }
+
+    pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
+        self.get_with(|s| Vec::from_iter(s.iter().cloned())).await
     }
 }

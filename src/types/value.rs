@@ -1,11 +1,7 @@
 use super::{DbField, EpicsEnum, EpicsString};
-use std::{
-    mem::align_of,
-    ptr::{self, copy_nonoverlapping},
-    slice::from_raw_parts,
-};
+use std::{mem::align_of, ptr, slice::from_raw_parts};
 
-pub trait Scalar: Type + Sized {
+pub trait Scalar: Type + Sized + Clone {
     type Raw: Sized;
 
     const ENUM: DbField;
@@ -13,19 +9,8 @@ pub trait Scalar: Type + Sized {
     fn matches(dbf: DbField) -> bool {
         dbf == Self::ENUM
     }
-    fn from_raw(raw: Self::Raw) -> Self {
+    fn from_raw(raw: <Self as Scalar>::Raw) -> Self {
         unsafe { ptr::read(&raw as *const _ as *const Self) }
-    }
-    /// # Safety
-    ///
-    /// `src` and `dst` :
-    /// + must be valid pointers to memory of size `count * size_of::<T>()`.
-    /// + must not overlap.
-    /// + must be aligned as `T::Element`.
-    unsafe fn copy_data(src: *const Self::Raw, dst: *mut Self, count: usize) {
-        debug_assert!(dst.align_offset(align_of::<Self>()) == 0);
-        debug_assert!(src.align_offset(align_of::<Self::Raw>()) == 0);
-        copy_nonoverlapping(src, dst as *mut Self::Raw, count);
     }
 }
 
@@ -72,7 +57,7 @@ impl Scalar for EpicsString {
     const ENUM: DbField = DbField::String;
 }
 
-pub trait Type {
+pub trait Type: Send {
     type Element: Type + Scalar;
 
     fn match_field(dbf: DbField) -> bool;
@@ -80,13 +65,12 @@ pub trait Type {
 
     fn element_count(&self) -> usize;
 
-    fn as_ptr(&self) -> *const u8;
-    fn as_mut_ptr(&mut self) -> *mut u8;
-
     /// # Safety
     ///
-    /// Pointer must be valid and `'a` must be appropriate.
-    unsafe fn from_ptr<'a>(data: *const u8, count: usize) -> &'a Self;
+    /// `data` must be valid and `'a` must be appropriate.
+    unsafe fn from_raw<'a>(data: *const <Self::Element as Scalar>::Raw, count: usize) -> &'a Self;
+
+    fn copy_from(&mut self, src: &Self);
 }
 
 impl<T: Scalar> Type for T {
@@ -103,16 +87,14 @@ impl<T: Scalar> Type for T {
         1
     }
 
-    fn as_ptr(&self) -> *const u8 {
-        self as *const _ as *const u8
-    }
-    fn as_mut_ptr(&mut self) -> *mut u8 {
-        self as *mut _ as *mut u8
-    }
-
-    unsafe fn from_ptr<'a>(data: *const u8, count: usize) -> &'a Self {
+    unsafe fn from_raw<'a>(data: *const <Self::Element as Scalar>::Raw, count: usize) -> &'a Self {
+        debug_assert!(data.align_offset(align_of::<T::Raw>()) == 0);
         assert_eq!(count, 1);
         &*(data as *const T)
+    }
+
+    fn copy_from(&mut self, src: &Self) {
+        *self = src.clone();
     }
 }
 
@@ -130,15 +112,13 @@ impl<T: Scalar> Type for [T] {
         self.len()
     }
 
-    fn as_ptr(&self) -> *const u8 {
-        self.as_ptr() as *const u8
-    }
-    fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr() as *mut u8
+    unsafe fn from_raw<'a>(data: *const <Self::Element as Scalar>::Raw, count: usize) -> &'a Self {
+        debug_assert!(data.align_offset(align_of::<T::Raw>()) == 0);
+        from_raw_parts(data as *const T, count)
     }
 
-    unsafe fn from_ptr<'a>(data: *const u8, count: usize) -> &'a Self {
-        from_raw_parts(data as *const T, count)
+    fn copy_from(&mut self, src: &Self) {
+        self[..src.len()].clone_from_slice(src);
     }
 }
 
