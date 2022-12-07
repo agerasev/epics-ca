@@ -4,7 +4,12 @@ use crate::{
     types::Scalar,
 };
 use derive_more::{Deref, DerefMut, Into};
-use std::{marker::PhantomData, ptr};
+use std::{
+    any::type_name,
+    fmt::{self, Debug},
+    marker::PhantomData,
+    ptr,
+};
 
 impl Channel {
     pub fn into_typed<T: Scalar>(self) -> Result<TypedChannel<T>, (Error, Self)> {
@@ -22,7 +27,7 @@ impl Channel {
 
 /// Typed channel.
 #[repr(transparent)]
-#[derive(Debug, Deref, DerefMut, Into)]
+#[derive(Deref, DerefMut, Into)]
 pub struct TypedChannel<T: Scalar> {
     #[deref]
     #[deref_mut]
@@ -64,6 +69,12 @@ impl ProcessData {
     }
     pub fn change_id(&mut self) {
         self.id_counter += 1;
+    }
+}
+
+impl<T: Scalar> Debug for TypedChannel<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Channel<{}>({:?})", type_name::<T>(), self.raw())
     }
 }
 
