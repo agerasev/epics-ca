@@ -52,7 +52,7 @@ impl Ord for EpicsTimeStamp {
     }
 }
 
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Copy, Debug, Eq)]
 #[repr(transparent)]
 pub struct StaticCString<const N: usize> {
     data: [c_char; N],

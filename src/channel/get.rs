@@ -1,7 +1,7 @@
 use super::{TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
-    types::{DbField, Scalar, Type},
+    types::{DbField, Scalar},
 };
 use pin_project::{pin_project, pinned_drop};
 use std::{
@@ -77,9 +77,7 @@ impl<'a, T: Scalar, F: FnOnce(&[T]) -> R + Send, R> Get<'a, T, F, R> {
             _ => unreachable!(),
         };
         if result.is_ok() {
-            debug_assert!(T::match_field(
-                DbField::try_from_raw(args.type_ as _).unwrap()
-            ));
+            debug_assert_eq!(T::ENUM, DbField::try_from_raw(args.type_ as _).unwrap());
             *state = GetState::Ready(func(slice::from_raw_parts(
                 args.dbr as *const T,
                 args.count as usize,
@@ -131,13 +129,14 @@ impl<T: Scalar> TypedChannel<T> {
     }
 
     pub async fn get_single(&mut self) -> Result<T, Error> {
-        self.get_with(|x| x[0].clone()).await
+        self.get_with(|x| x[0]).await
     }
 
     pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {
         self.get_with(|src| {
-            dst.copy_from(src);
-            src.element_count()
+            let len = usize::min(dst.len(), src.len());
+            dst[..len].copy_from_slice(&src[..len]);
+            len
         })
         .await
     }

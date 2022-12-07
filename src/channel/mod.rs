@@ -1,11 +1,15 @@
+mod array;
 mod base;
 mod get;
 mod put;
+mod scalar;
 mod typed;
 
+pub use array::*;
 pub use base::*;
 pub use get::*;
 pub use put::*;
+pub use scalar::*;
 pub use typed::*;
 
 use crate::{context::Context, error::Error, types::Scalar};
