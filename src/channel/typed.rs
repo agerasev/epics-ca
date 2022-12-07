@@ -3,11 +3,8 @@ use crate::{
     error::{self, Error},
     types::Scalar,
 };
-use std::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-    ptr,
-};
+use derive_more::{Deref, DerefMut, Into};
+use std::{marker::PhantomData, ptr};
 
 impl Channel {
     pub fn into_typed<T: Scalar>(self) -> Result<TypedChannel<T>, (Error, Self)> {
@@ -25,8 +22,12 @@ impl Channel {
 
 /// Typed channel.
 #[repr(transparent)]
+#[derive(Debug, Deref, DerefMut, Into)]
 pub struct TypedChannel<T: Scalar> {
+    #[deref]
+    #[deref_mut]
     any: Channel,
+    #[into(ignore)]
     _p: PhantomData<T>,
 }
 
@@ -41,22 +42,6 @@ impl<T: Scalar> TypedChannel<T> {
             any,
             _p: PhantomData,
         }
-    }
-
-    pub fn into_any(self) -> Channel {
-        self.any
-    }
-}
-
-impl<T: Scalar> Deref for TypedChannel<T> {
-    type Target = Channel;
-    fn deref(&self) -> &Self::Target {
-        &self.any
-    }
-}
-impl<T: Scalar> DerefMut for TypedChannel<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.any
     }
 }
 
@@ -88,7 +73,6 @@ mod tests {
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
-    use std::f64::consts::PI;
 
     #[async_test]
     #[serial]
@@ -97,21 +81,5 @@ mod tests {
         let mut any = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
         any.connected().await;
         any.into_typed::<f64>().unwrap();
-    }
-
-    #[async_test]
-    #[serial]
-    async fn put_get() {
-        let ctx = Context::new().unwrap();
-
-        let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
-        output.connected().await;
-        let mut output = output.into_typed::<f64>().unwrap();
-        output.put(&[PI]).unwrap().await.unwrap();
-
-        let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
-        input.connected().await;
-        let mut input = input.into_typed::<f64>().unwrap();
-        assert_eq!(input.get_single().await.unwrap(), PI);
     }
 }

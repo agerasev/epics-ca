@@ -3,6 +3,7 @@ use crate::{
     error::{self, Error},
     types::Scalar,
 };
+use derive_more::{Deref, DerefMut, Into};
 
 impl<T: Scalar> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -19,10 +20,50 @@ impl<T: Scalar> TypedChannel<T> {
 }
 
 #[repr(transparent)]
-struct ScalarChannel<T: Scalar> {
+#[derive(Debug, Deref, DerefMut, Into)]
+pub struct ScalarChannel<T: Scalar> {
     chan: TypedChannel<T>,
 }
 
 impl<T: Scalar> ScalarChannel<T> {
-    pub fn new_unchecked(chan: TypedChannel<T>) -> Self {}
+    pub fn new_unchecked(chan: TypedChannel<T>) -> Self {
+        Self { chan }
+    }
+
+    pub async fn get(&mut self) -> Result<T, Error> {
+        self.get_with(|data| {
+            assert_eq!(data.len(), 1);
+            data[0]
+        })
+        .await
+    }
+
+    pub async fn put(&mut self, value: T) -> Result<(), Error> {
+        self.put_slice(&[value])?.await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Channel, Context};
+    use async_std::test as async_test;
+    use c_str_macro::c_str;
+    use serial_test::serial;
+    use std::f64::consts::PI;
+
+    #[async_test]
+    #[serial]
+    async fn put_get() {
+        let ctx = Context::new().unwrap();
+
+        let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
+        output.connected().await;
+        let mut output = output.into_typed::<f64>().unwrap().into_scalar().unwrap();
+        output.put(PI).await.unwrap();
+
+        let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
+        input.connected().await;
+        let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
+        assert_eq!(input.get().await.unwrap(), PI);
+    }
 }

@@ -1,4 +1,5 @@
 use chrono::{TimeZone, Utc};
+use derive_more::{From, Into};
 use std::{
     cmp::Ordering,
     ffi::{c_char, CStr},
@@ -8,7 +9,7 @@ use std::{
 };
 
 #[repr(transparent)]
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord, From, Into)]
 pub struct EpicsEnum(pub u16);
 
 #[repr(transparent)]

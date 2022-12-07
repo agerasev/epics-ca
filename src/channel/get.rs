@@ -128,10 +128,6 @@ impl<T: Scalar> TypedChannel<T> {
         Get::new(self, func).await
     }
 
-    pub async fn get_single(&mut self) -> Result<T, Error> {
-        self.get_with(|x| x[0]).await
-    }
-
     pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {
         self.get_with(|src| {
             let len = usize::min(dst.len(), src.len());
