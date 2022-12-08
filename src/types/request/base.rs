@@ -2,9 +2,11 @@ use crate::types::{DbRequest, EpicsString};
 
 /// # Safety
 ///
+/// Should be implemented only for requests supported by channel access.
+///
 /// `Self` and `Self::Raw` must be safely transmutable to each other.
 #[allow(clippy::len_without_is_empty)]
-pub trait Request {
+pub unsafe trait Request {
     type Raw;
     const ENUM: DbRequest;
 
@@ -35,7 +37,7 @@ pub trait ReadRequest: Request {}
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PutAckt(pub u16);
 
-impl Request for PutAckt {
+unsafe impl Request for PutAckt {
     type Raw = sys::dbr_put_ackt_t;
     const ENUM: DbRequest = DbRequest::PutAckt;
     impl_sized_request_methods!();
@@ -46,7 +48,7 @@ impl WriteRequest for PutAckt {}
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PutAcks(pub u16);
 
-impl Request for PutAcks {
+unsafe impl Request for PutAcks {
     type Raw = sys::dbr_put_acks_t;
     const ENUM: DbRequest = DbRequest::PutAcks;
     impl_sized_request_methods!();
@@ -57,7 +59,7 @@ impl WriteRequest for PutAcks {}
 #[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
 pub struct StsackString(pub EpicsString);
 
-impl Request for StsackString {
+unsafe impl Request for StsackString {
     type Raw = sys::dbr_stsack_string_t;
     const ENUM: DbRequest = DbRequest::PutAcks;
     impl_sized_request_methods!();
@@ -68,7 +70,7 @@ impl ReadRequest for StsackString {}
 #[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
 pub struct ClassName(pub EpicsString);
 
-impl Request for ClassName {
+unsafe impl Request for ClassName {
     type Raw = sys::dbr_class_name_t;
     const ENUM: DbRequest = DbRequest::ClassName;
     impl_sized_request_methods!();

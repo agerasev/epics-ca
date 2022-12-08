@@ -15,14 +15,14 @@ pub struct Extended<R: ScalarRequest> {
 
 impl<R: ScalarRequest> Extended<R> {
     pub fn value(&self) -> &[R::Type] {
-        unsafe { slice::from_raw_parts(self.base.value() as *const R::Type, self.len()) }
+        unsafe { slice::from_raw_parts(self.base.value_ref() as *const R::Type, self.len()) }
     }
     pub fn value_mut(&mut self) -> &mut [R::Type] {
         unsafe { slice::from_raw_parts_mut(self.base.value_mut() as *mut R::Type, self.len()) }
     }
 }
 
-impl<R: ScalarRequest> Request for Extended<R> {
+unsafe impl<R: ScalarRequest> Request for Extended<R> {
     type Raw = R::Raw;
     const ENUM: DbRequest = R::ENUM;
 
@@ -39,7 +39,7 @@ impl<R: TypedRequest + ScalarRequest> TypedRequest for Extended<R> {
 impl<R: ReadRequest + ScalarRequest> ReadRequest for Extended<R> {}
 impl<R: WriteRequest + ScalarRequest> WriteRequest for Extended<R> {}
 
-impl<T: Scalar> Request for [T] {
+unsafe impl<T: Scalar> Request for [T] {
     type Raw = T::Raw;
     const ENUM: DbRequest = DbRequest::Base(T::ENUM);
 

@@ -63,8 +63,13 @@ where
             let result = self
                 .value
                 .get_request_with(move |request: &Extended<Time<T>>| {
+                    println!(
+                        "nord: {}, timestamp: {:?}",
+                        nord.value(),
+                        nord.stamp.to_system()
+                    );
                     if request.stamp == nord.stamp {
-                        let len = *nord.value() as usize;
+                        let len = nord.value() as usize;
                         Ok(func(&request.value()[..len]))
                     } else {
                         Err(func)

@@ -16,18 +16,25 @@ pub trait TypedRequest: Request {
     type Type: Scalar;
 }
 pub trait ScalarRequest: TypedRequest + Sized + Clone + Send {
-    fn value(&self) -> &Self::Type {
+    fn value_ref(&self) -> &Self::Type {
         unsafe { &*(((self as *const Self).offset(1) as *const Self::Type).offset(-1)) }
     }
     fn value_mut(&mut self) -> &mut Self::Type {
         unsafe { &mut *(((self as *mut Self).offset(1) as *mut Self::Type).offset(-1)) }
+    }
+
+    fn value(&self) -> Self::Type {
+        *self.value_ref()
+    }
+    fn set_value(&mut self, value: Self::Type) {
+        *self.value_mut() = value;
     }
 }
 
 impl<T: Scalar> TypedRequest for T {
     type Type = T;
 }
-impl<T: Scalar> Request for T {
+unsafe impl<T: Scalar> Request for T {
     type Raw = T::Raw;
     const ENUM: DbRequest = DbRequest::Base(T::ENUM);
     impl_sized_request_methods!();
@@ -41,7 +48,7 @@ macro_rules! impl_typed_request {
         impl TypedRequest for $struct {
             type Type = $ty;
         }
-        impl Request for $struct {
+        unsafe impl Request for $struct {
             type Raw = $raw;
             const ENUM: DbRequest = $enum(<$ty as Scalar>::ENUM);
             impl_sized_request_methods!();
