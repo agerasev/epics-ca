@@ -2,22 +2,45 @@ use crate::types::{DbRequest, EpicsString};
 
 /// # Safety
 ///
+/// Should be implemented only for requests supported by channel access.
+///
 /// `Self` and `Self::Raw` must be safely transmutable to each other.
-pub trait AnyRequest {
+#[allow(clippy::len_without_is_empty)]
+pub unsafe trait Request {
     type Raw;
     const ENUM: DbRequest;
+
+    fn len(&self) -> usize;
+    /// # Safety
+    ///
+    /// Pointer must be valid and point to raw request structure.
+    unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self;
 }
 
-pub trait WriteRequest: AnyRequest {}
-pub trait ReadRequest: AnyRequest {}
+macro_rules! impl_sized_request_methods {
+    () => {
+        fn len(&self) -> usize {
+            1
+        }
+        unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self {
+            debug_assert_eq!(count, 1);
+            &*(ptr as *const Self)
+        }
+    };
+}
+pub(crate) use impl_sized_request_methods;
+
+pub trait WriteRequest: Request {}
+pub trait ReadRequest: Request {}
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PutAckt(pub u16);
 
-impl AnyRequest for PutAckt {
+unsafe impl Request for PutAckt {
     type Raw = sys::dbr_put_ackt_t;
     const ENUM: DbRequest = DbRequest::PutAckt;
+    impl_sized_request_methods!();
 }
 impl WriteRequest for PutAckt {}
 
@@ -25,9 +48,10 @@ impl WriteRequest for PutAckt {}
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PutAcks(pub u16);
 
-impl AnyRequest for PutAcks {
+unsafe impl Request for PutAcks {
     type Raw = sys::dbr_put_acks_t;
     const ENUM: DbRequest = DbRequest::PutAcks;
+    impl_sized_request_methods!();
 }
 impl WriteRequest for PutAcks {}
 
@@ -35,9 +59,10 @@ impl WriteRequest for PutAcks {}
 #[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
 pub struct StsackString(pub EpicsString);
 
-impl AnyRequest for StsackString {
+unsafe impl Request for StsackString {
     type Raw = sys::dbr_stsack_string_t;
     const ENUM: DbRequest = DbRequest::PutAcks;
+    impl_sized_request_methods!();
 }
 impl ReadRequest for StsackString {}
 
@@ -45,8 +70,9 @@ impl ReadRequest for StsackString {}
 #[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
 pub struct ClassName(pub EpicsString);
 
-impl AnyRequest for ClassName {
+unsafe impl Request for ClassName {
     type Raw = sys::dbr_class_name_t;
     const ENUM: DbRequest = DbRequest::ClassName;
+    impl_sized_request_methods!();
 }
 impl ReadRequest for ClassName {}

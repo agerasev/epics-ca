@@ -1,70 +1,52 @@
-use super::AnyChannel;
+use super::Channel;
 use crate::{
     error::{self, Error},
-    types::{DbField, Type},
+    types::Scalar,
 };
+use derive_more::{Deref, DerefMut, Into};
 use std::{
+    any::type_name,
+    fmt::{self, Debug},
     marker::PhantomData,
-    ops::{Deref, DerefMut},
     ptr,
 };
 
-impl AnyChannel {
-    fn match_type<T: Type + ?Sized>(&self) -> Result<(DbField, usize), Error> {
-        let dbf = self.field_type()?;
-        let count = self.element_count()?;
-        if !T::match_field(dbf) {
-            Err(error::BADTYPE)
-        } else if !T::match_count(count) {
-            Err(error::BADCOUNT)
+impl Channel {
+    pub fn into_typed<T: Scalar>(self) -> Result<TypedChannel<T>, (Error, Self)> {
+        let dbf = match self.field_type() {
+            Ok(dbf) => dbf,
+            Err(err) => return Err((err, self)),
+        };
+        if dbf == T::ENUM {
+            Ok(TypedChannel::new_unchecked(self))
         } else {
-            Ok((dbf, count))
-        }
-    }
-    pub fn into_typed<T: Type + ?Sized>(self) -> Result<Channel<T>, (Error, Self)> {
-        match self.match_type::<T>() {
-            Ok((dbf, count)) => Ok(Channel::from_any_unchecked(self, dbf, count)),
-            Err(err) => Err((err, self)),
+            Err((error::BADTYPE, self))
         }
     }
 }
 
 /// Typed channel.
-pub struct Channel<T: ?Sized> {
-    any: AnyChannel,
-    pub(crate) dbf: DbField,
-    pub(crate) count: usize,
+#[repr(transparent)]
+#[derive(Deref, DerefMut, Into)]
+pub struct TypedChannel<T: Scalar> {
+    #[deref]
+    #[deref_mut]
+    any: Channel,
+    #[into(ignore)]
     _p: PhantomData<T>,
 }
 
-impl<T: ?Sized> Channel<T> {
+impl<T: Scalar> TypedChannel<T> {
     /// Convert [`AnyChannel`] to [`Channel<T>`] without type checking.
     ///
     /// It is safe because the type of remote channel can change at any moment and checks are done reading/writing/monitoring anyway.
     ///
     /// If you want to check type before converting use [`AnyChannel::into_typed`].
-    pub fn from_any_unchecked(any: AnyChannel, dbf: DbField, count: usize) -> Self {
+    pub fn new_unchecked(any: Channel) -> Self {
         Self {
             any,
-            dbf,
-            count,
             _p: PhantomData,
         }
-    }
-    pub fn into_any(self) -> AnyChannel {
-        self.any
-    }
-}
-
-impl<T: ?Sized> Deref for Channel<T> {
-    type Target = AnyChannel;
-    fn deref(&self) -> &Self::Target {
-        &self.any
-    }
-}
-impl<T: ?Sized> DerefMut for Channel<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.any
     }
 }
 
@@ -90,36 +72,25 @@ impl ProcessData {
     }
 }
 
+impl<T: Scalar> Debug for TypedChannel<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Channel<{}>({:?})", type_name::<T>(), self.raw())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{AnyChannel, Context};
+    use crate::{Channel, Context};
     use async_std::test as async_test;
     use c_str_macro::c_str;
     use serial_test::serial;
-    use std::f64::consts::PI;
 
     #[async_test]
     #[serial]
     async fn downcast() {
         let ctx = Context::new().unwrap();
-        let mut any = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
+        let mut any = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
         any.connected().await;
         any.into_typed::<f64>().unwrap();
-    }
-
-    #[async_test]
-    #[serial]
-    async fn put_get() {
-        let ctx = Context::new().unwrap();
-
-        let mut output = AnyChannel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
-        output.connected().await;
-        let mut output = output.into_typed::<f64>().unwrap();
-        output.put(&PI).unwrap().await.unwrap();
-
-        let mut input = AnyChannel::new(ctx, c_str!("ca:test:ai")).unwrap();
-        input.connected().await;
-        let mut input = input.into_typed::<f64>().unwrap();
-        assert_eq!(input.get().await.unwrap(), PI);
     }
 }

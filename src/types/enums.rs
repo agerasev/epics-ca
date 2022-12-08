@@ -53,6 +53,62 @@ pub enum DbRequest {
 }
 
 impl DbRequest {
+    pub fn try_from_raw(raw: i32) -> Option<Self> {
+        match raw {
+            sys::DBR_STRING => Some(DbRequest::Base(DbField::String)),
+            sys::DBR_SHORT => Some(DbRequest::Base(DbField::Short)),
+            // sys::DBR_INT => Some(DbRequest::Base(DbField::Int)),
+            sys::DBR_FLOAT => Some(DbRequest::Base(DbField::Float)),
+            sys::DBR_ENUM => Some(DbRequest::Base(DbField::Enum)),
+            sys::DBR_CHAR => Some(DbRequest::Base(DbField::Char)),
+            sys::DBR_LONG => Some(DbRequest::Base(DbField::Long)),
+            sys::DBR_DOUBLE => Some(DbRequest::Base(DbField::Double)),
+
+            sys::DBR_STS_STRING => Some(DbRequest::Sts(DbField::String)),
+            sys::DBR_STS_SHORT => Some(DbRequest::Sts(DbField::Short)),
+            // sys::DBR_STS_INT => Some(DbRequest::Sts(DbField::Int)),
+            sys::DBR_STS_FLOAT => Some(DbRequest::Sts(DbField::Float)),
+            sys::DBR_STS_ENUM => Some(DbRequest::Sts(DbField::Enum)),
+            sys::DBR_STS_CHAR => Some(DbRequest::Sts(DbField::Char)),
+            sys::DBR_STS_LONG => Some(DbRequest::Sts(DbField::Long)),
+            sys::DBR_STS_DOUBLE => Some(DbRequest::Sts(DbField::Double)),
+
+            sys::DBR_TIME_STRING => Some(DbRequest::Time(DbField::String)),
+            sys::DBR_TIME_SHORT => Some(DbRequest::Time(DbField::Short)),
+            // sys::DBR_TIME_INT => Some(DbRequest::Time(DbField::Int)),
+            sys::DBR_TIME_FLOAT => Some(DbRequest::Time(DbField::Float)),
+            sys::DBR_TIME_ENUM => Some(DbRequest::Time(DbField::Enum)),
+            sys::DBR_TIME_CHAR => Some(DbRequest::Time(DbField::Char)),
+            sys::DBR_TIME_LONG => Some(DbRequest::Time(DbField::Long)),
+            sys::DBR_TIME_DOUBLE => Some(DbRequest::Time(DbField::Double)),
+
+            sys::DBR_GR_STRING => Some(DbRequest::Gr(DbField::String)),
+            sys::DBR_GR_SHORT => Some(DbRequest::Gr(DbField::Short)),
+            // sys::DBR_GR_INT => Some(DbRequest::Gr(DbField::Int)),
+            sys::DBR_GR_FLOAT => Some(DbRequest::Gr(DbField::Float)),
+            sys::DBR_GR_ENUM => Some(DbRequest::Gr(DbField::Enum)),
+            sys::DBR_GR_CHAR => Some(DbRequest::Gr(DbField::Char)),
+            sys::DBR_GR_LONG => Some(DbRequest::Gr(DbField::Long)),
+            sys::DBR_GR_DOUBLE => Some(DbRequest::Gr(DbField::Double)),
+
+            sys::DBR_CTRL_STRING => Some(DbRequest::Ctrl(DbField::String)),
+            sys::DBR_CTRL_SHORT => Some(DbRequest::Ctrl(DbField::Short)),
+            // sys::DBR_CTRL_INT => Some(DbRequest::Ctrl(DbField::Int)),
+            sys::DBR_CTRL_FLOAT => Some(DbRequest::Ctrl(DbField::Float)),
+            sys::DBR_CTRL_ENUM => Some(DbRequest::Ctrl(DbField::Enum)),
+            sys::DBR_CTRL_CHAR => Some(DbRequest::Ctrl(DbField::Char)),
+            sys::DBR_CTRL_LONG => Some(DbRequest::Ctrl(DbField::Long)),
+            sys::DBR_CTRL_DOUBLE => Some(DbRequest::Ctrl(DbField::Double)),
+
+            sys::DBR_PUT_ACKT => Some(DbRequest::PutAckt),
+            sys::DBR_PUT_ACKS => Some(DbRequest::PutAcks),
+            sys::DBR_STSACK_STRING => Some(DbRequest::StsackString),
+            sys::DBR_CLASS_NAME => Some(DbRequest::ClassName),
+
+            _ => None,
+        }
+    }
+
     pub fn raw(&self) -> i32 {
         match self {
             DbRequest::Base(dbf) => match dbf {

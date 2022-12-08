@@ -1,7 +1,10 @@
-use super::{Channel, UserData};
+use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
-    types::{DbField, Scalar, Type},
+    types::{
+        request::{ReadRequest, TypedRequest},
+        DbRequest, Scalar,
+    },
 };
 use pin_project::{pin_project, pinned_drop};
 use std::{
@@ -14,24 +17,39 @@ use std::{
     task::{Context, Poll},
 };
 
-enum GetState<T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
+enum GetState<R, Q, F>
+where
+    R: ReadRequest + ?Sized,
+    Q: Send,
+    F: FnOnce(&R) -> Q + Send,
+{
     Empty,
-    Pending(F, PhantomData<T>),
-    Ready(R),
+    Pending(F, PhantomData<R>),
+    Ready(Q),
 }
 
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Get<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> {
-    owner: &'a mut Channel<T>,
+pub struct Get<'a, R, Q, F>
+where
+    R: ReadRequest + ?Sized,
+    Q: Send,
+    F: FnOnce(&R) -> Q + Send,
+{
+    owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
     #[pin]
-    state: UnsafeCell<GetState<T, F, R>>,
+    state: UnsafeCell<GetState<R, Q, F>>,
     started: bool,
 }
 
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
-    fn new(owner: &'a mut Channel<T>, func: F) -> Self {
+impl<'a, R, Q, F> Get<'a, R, Q, F>
+where
+    R: ReadRequest + ?Sized,
+    Q: Send,
+    F: FnOnce(&R) -> Q + Send,
+{
+    fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
             state: UnsafeCell::new(GetState::Pending(func, PhantomData)),
@@ -48,8 +66,8 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
             proc.state = this.state.get() as *mut u8;
             result_from_raw(unsafe {
                 sys::ca_array_get_callback(
-                    owner.dbf as _,
-                    owner.count as _,
+                    R::ENUM.raw() as _,
+                    0,
                     owner.raw(),
                     Some(Self::callback),
                     proc.id() as _,
@@ -71,27 +89,29 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Get<'a, T, F, R> {
             return;
         }
         let result = result_from_raw(args.status);
-        let state = &mut *(proc.state as *mut GetState<T, F, R>);
+        let state = &mut *(proc.state as *mut GetState<R, Q, F>);
         let func = match mem::replace(state, GetState::Empty) {
             GetState::Pending(func, _) => func,
             _ => unreachable!(),
         };
         if result.is_ok() {
-            debug_assert!(T::match_field(
-                DbField::try_from_raw(args.type_ as _).unwrap()
-            ));
-            *state = GetState::Ready(func(T::from_raw(
-                args.dbr as *const <T::Element as Scalar>::Raw,
-                args.count as usize,
-            )));
+            debug_assert_eq!(R::ENUM, DbRequest::try_from_raw(args.type_ as _).unwrap());
+            debug_assert_ne!(args.count, 0);
+            let request = R::ref_from_ptr(args.dbr as *const u8, args.count as usize);
+            *state = GetState::Ready(func(request));
         }
         proc.result = Some(result);
         user_data.waker.wake();
     }
 }
 
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Future for Get<'a, T, F, R> {
-    type Output = Result<R, Error>;
+impl<'a, R, Q, F> Future for Get<'a, R, Q, F>
+where
+    R: ReadRequest + ?Sized,
+    Q: Send,
+    F: FnOnce(&R) -> Q + Send,
+{
+    type Output = Result<Q, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.owner.user_data().waker.register(cx.waker());
         if !self.started {
@@ -115,7 +135,12 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> Future for Get<'a, T, F
 }
 
 #[pinned_drop]
-impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> PinnedDrop for Get<'a, T, F, R> {
+impl<'a, R, Q, F> PinnedDrop for Get<'a, R, Q, F>
+where
+    R: ReadRequest + ?Sized,
+    Q: Send,
+    F: FnOnce(&R) -> Q + Send,
+{
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
@@ -125,28 +150,46 @@ impl<'a, T: Type + ?Sized, F: FnOnce(&T) -> R + Send, R> PinnedDrop for Get<'a, 
     }
 }
 
-impl<T: Type + ?Sized> Channel<T> {
-    pub async fn get_with<F: FnOnce(&T) -> R + Send, R>(&mut self, func: F) -> Result<R, Error> {
+impl Channel {
+    pub async fn get_request_with<R, Q, F>(&mut self, func: F) -> Result<Q, Error>
+    where
+        R: ReadRequest + ?Sized,
+        Q: Send,
+        F: FnOnce(&R) -> Q + Send,
+    {
         Get::new(self, func).await
     }
 }
 
-impl<T: Scalar> Channel<T> {
-    pub async fn get(&mut self) -> Result<T, Error> {
-        self.get_with(|x| x.clone()).await
+impl<T: Scalar> TypedChannel<T> {
+    pub async fn get_request_with<R, Q, F>(&mut self, func: F) -> Result<Q, Error>
+    where
+        R: ReadRequest + TypedRequest<Type = T> + ?Sized,
+        Q: Send,
+        F: FnOnce(&R) -> Q + Send,
+    {
+        Get::new(self, func).await
     }
-}
 
-impl<T: Scalar> Channel<[T]> {
+    pub async fn get_with<Q, F>(&mut self, func: F) -> Result<Q, Error>
+    where
+        Q: Send,
+        F: FnOnce(&[T]) -> Q + Send,
+    {
+        self.get_request_with(func).await
+    }
+
     pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {
-        self.get_with(|src| {
-            dst.copy_from(src);
-            src.element_count()
+        self.get_with(|src: &[T]| {
+            let len = usize::min(dst.len(), src.len());
+            dst[..len].copy_from_slice(&src[..len]);
+            len
         })
         .await
     }
 
     pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
-        self.get_with(|s| Vec::from_iter(s.iter().cloned())).await
+        self.get_with(|s: &[T]| Vec::from_iter(s.iter().cloned()))
+            .await
     }
 }

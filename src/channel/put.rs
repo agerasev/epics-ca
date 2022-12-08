@@ -1,7 +1,7 @@
-use super::{Channel, UserData};
+use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
-    types::Type,
+    types::{request::WriteRequest, Scalar},
 };
 use std::{
     future::Future,
@@ -9,17 +9,17 @@ use std::{
     task::{Context, Poll},
 };
 
-impl<T: Type + ?Sized> Channel<T> {
-    pub fn put(&mut self, data: &T) -> Result<Put<'_, T>, Error> {
+impl Channel {
+    pub fn put_request<R: WriteRequest + ?Sized>(&mut self, request: &R) -> Result<Put<'_>, Error> {
         self.context()
             .with(|| {
                 let mut proc = self.user_data().process.lock().unwrap();
                 result_from_raw(unsafe {
                     sys::ca_array_put_callback(
-                        self.dbf as _,
-                        data.element_count() as _,
+                        R::ENUM.raw() as _,
+                        request.len() as _,
                         self.raw(),
-                        data as *const T as _,
+                        request as *const R as *const _,
                         Some(Self::callback),
                         proc.id() as _,
                     )
@@ -44,13 +44,13 @@ impl<T: Type + ?Sized> Channel<T> {
     }
 }
 
-pub struct Put<'a, T: Type + ?Sized> {
-    owner: &'a mut Channel<T>,
+pub struct Put<'a> {
+    owner: &'a mut Channel,
 }
 
-impl<'a, T: Type + ?Sized> Unpin for Put<'a, T> {}
+impl<'a> Unpin for Put<'a> {}
 
-impl<'a, T: Type + ?Sized> Future for Put<'a, T> {
+impl<'a> Future for Put<'a> {
     type Output = Result<(), Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let user_data = self.owner.user_data();
@@ -63,10 +63,16 @@ impl<'a, T: Type + ?Sized> Future for Put<'a, T> {
     }
 }
 
-impl<'a, T: Type + ?Sized> Drop for Put<'a, T> {
+impl<'a> Drop for Put<'a> {
     fn drop(&mut self) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
         proc.change_id();
         proc.result = None;
+    }
+}
+
+impl<T: Scalar> TypedChannel<T> {
+    pub fn put_slice(&mut self, data: &[T]) -> Result<Put<'_>, Error> {
+        self.put_request(data)
     }
 }
