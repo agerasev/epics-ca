@@ -15,7 +15,7 @@ pub struct Units(pub StaticCString<MAX_UNITS_SIZE>);
 pub trait TypedRequest: Request {
     type Type: Scalar;
 }
-pub trait ScalarRequest: TypedRequest + Sized {
+pub trait ScalarRequest: TypedRequest + Sized + Clone + Send {
     fn value(&self) -> &Self::Type {
         unsafe { &*(((self as *const Self).offset(1) as *const Self::Type).offset(-1)) }
     }
@@ -32,6 +32,7 @@ impl<T: Scalar> Request for T {
     const ENUM: DbRequest = DbRequest::Base(T::ENUM);
     impl_sized_request_methods!();
 }
+impl<T: Scalar> ScalarRequest for T {}
 impl<T: Scalar> WriteRequest for T {}
 impl<T: Scalar> ReadRequest for T {}
 
@@ -45,6 +46,7 @@ macro_rules! impl_typed_request {
             const ENUM: DbRequest = $enum(<$ty as Scalar>::ENUM);
             impl_sized_request_methods!();
         }
+        impl ScalarRequest for $struct {}
         impl ReadRequest for $struct {}
     };
 }

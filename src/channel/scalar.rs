@@ -1,7 +1,7 @@
 use super::TypedChannel;
 use crate::{
     error::{self, Error},
-    types::Scalar,
+    types::{ReadRequest, Scalar, ScalarRequest, TypedRequest},
 };
 use derive_more::{Deref, DerefMut, Into};
 
@@ -30,12 +30,19 @@ impl<T: Scalar> ScalarChannel<T> {
         Self { chan }
     }
 
-    pub async fn get(&mut self) -> Result<T, Error> {
-        self.get_with(|data| {
-            assert_eq!(data.len(), 1);
-            data[0]
+    pub async fn get_request<R>(&mut self) -> Result<R, Error>
+    where
+        R: ReadRequest + TypedRequest<Type = T> + ScalarRequest,
+    {
+        self.get_request_with(|request: &R| {
+            debug_assert_eq!(request.len(), 1);
+            request.clone()
         })
         .await
+    }
+
+    pub async fn get(&mut self) -> Result<T, Error> {
+        self.get_request::<T>().await
     }
 
     pub async fn put(&mut self, value: T) -> Result<(), Error> {
