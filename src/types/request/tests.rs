@@ -2,9 +2,9 @@ use super::*;
 use crate::types::{EpicsEnum, EpicsString};
 use std::mem::{align_of, size_of};
 
-fn assert_layout<T: AnyRequest>() {
-    assert_eq!(size_of::<T>(), size_of::<T::Raw>());
-    assert_eq!(align_of::<T>(), align_of::<T::Raw>());
+fn assert_layout<R: Request>() {
+    assert_eq!(size_of::<R>(), size_of::<R::Raw>());
+    assert_eq!(align_of::<R>(), align_of::<R::Raw>());
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn time() {
 fn gr() {
     assert_layout::<GrInt<u8>>();
     assert_layout::<GrInt<i16>>();
-    assert_layout::<GrEnum<EpicsEnum>>();
+    assert_layout::<GrEnum>();
     assert_layout::<GrInt<i32>>();
     assert_layout::<GrFloat<f32>>();
     assert_layout::<GrFloat<f64>>();
@@ -54,7 +54,7 @@ fn gr() {
 fn ctrl() {
     assert_layout::<CtrlInt<u8>>();
     assert_layout::<CtrlInt<i16>>();
-    assert_layout::<CtrlEnum<EpicsEnum>>();
+    assert_layout::<CtrlEnum>();
     assert_layout::<CtrlInt<i32>>();
     assert_layout::<CtrlFloat<f32>>();
     assert_layout::<CtrlFloat<f64>>();
