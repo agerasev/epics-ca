@@ -1,7 +1,10 @@
 use super::TypedChannel;
 use crate::{
     error::{self, Error},
-    types::{ReadRequest, Scalar, ScalarRequest, TypedRequest},
+    types::{
+        request::{ReadRequest, ScalarRequest, TypedRequest},
+        Scalar,
+    },
 };
 use derive_more::{Deref, DerefMut, Into};
 

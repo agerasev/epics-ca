@@ -11,6 +11,8 @@ use std::{
     sync::Arc,
 };
 
+use super::ArrayChannel;
+
 async fn connect_and_check<T: Scalar>(
     ctx: Arc<Context>,
     name: &CStr,
@@ -74,29 +76,37 @@ async fn string() {
     output.put(data).await.unwrap();
     assert_eq!(input.get().await.unwrap(), data);
 }
-/*
+
+async fn connect_and_check_array<T: Scalar>(
+    ctx: Arc<Context>,
+    name: &CStr,
+    dbf: DbField,
+    count: usize,
+) -> ArrayChannel<T> {
+    let chan = ctx.connect(name).await.unwrap();
+    assert_eq!(chan.name(), name);
+    assert_eq!(chan.field_type().unwrap(), dbf);
+    assert_eq!(chan.element_count().unwrap(), count);
+    chan.into_typed::<T>().unwrap().into_array().await.unwrap()
+}
+
 #[async_test]
 #[serial]
 async fn array() {
     let ctx = Context::new().unwrap();
     let max_len = 64;
     let mut output =
-        connect_and_check::<[i32]>(ctx.clone(), c_str!("ca:test:aao"), DbField::Long, max_len)
+        connect_and_check_array::<i32>(ctx.clone(), c_str!("ca:test:aao"), DbField::Long, max_len)
             .await;
     let mut input =
-        connect_and_check::<[i32]>(ctx.clone(), c_str!("ca:test:aai"), DbField::Long, max_len)
+        connect_and_check_array::<i32>(ctx.clone(), c_str!("ca:test:aai"), DbField::Long, max_len)
             .await;
-    let mut nord =
-        connect_and_check::<f64>(ctx.clone(), c_str!("ca:test:aai.NORD"), DbField::Double).await;
 
     let data = (0..42).collect::<Vec<_>>();
-    output.put(&data).unwrap().await.unwrap();
-    let len = nord.get().await.unwrap() as usize;
-    assert_eq!(len, data.len());
-    assert_eq!(input.get_vec().await.unwrap()[..len], data);
+    output.put(&data).await.unwrap();
+    assert_eq!(input.get_vec().await.unwrap(), data);
 
     let data = (-64..0).collect::<Vec<_>>();
-    output.put(&data).unwrap().await.unwrap();
+    output.put(&data).await.unwrap();
     assert_eq!(input.get_vec().await.unwrap(), data);
 }
-*/

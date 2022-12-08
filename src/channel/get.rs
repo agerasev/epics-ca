@@ -1,7 +1,10 @@
 use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
-    types::{DbRequest, ReadRequest, Scalar, TypedRequest},
+    types::{
+        request::{ReadRequest, TypedRequest},
+        DbRequest, Scalar,
+    },
 };
 use pin_project::{pin_project, pinned_drop};
 use std::{
