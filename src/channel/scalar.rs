@@ -2,12 +2,13 @@ use super::TypedChannel;
 use crate::{
     error::{self, Error},
     types::{
-        request::{ReadRequest, ScalarRequest, TypedRequest},
+        request::{Extended, ReadRequest, Request, ScalarRequest},
         Scalar,
     },
 };
 use derive_more::{Deref, DerefMut, Into};
 use futures::Stream;
+use std::ops::Deref;
 
 impl<T: Scalar> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -40,12 +41,12 @@ impl<T: Scalar> ScalarChannel<T> {
 
     pub async fn get_request<R>(&mut self) -> Result<R, Error>
     where
-        R: ReadRequest + TypedRequest<Type = T> + ScalarRequest,
+        R: ScalarRequest<Type = T> + ReadRequest,
     {
         self.chan
-            .get_request_with(|request: &R| {
+            .get_request_with(|request: &Extended<R>| {
                 debug_assert_eq!(request.len(), 1);
-                request.clone()
+                request.deref().clone()
             })
             .await
     }
@@ -56,11 +57,11 @@ impl<T: Scalar> ScalarChannel<T> {
 
     pub fn subscribe_request<R>(&mut self) -> impl Stream<Item = Result<R, Error>> + '_
     where
-        R: ReadRequest + TypedRequest<Type = T> + ScalarRequest,
+        R: ScalarRequest<Type = T> + ReadRequest,
     {
-        self.chan.subscribe_request_with(|request: &R| {
+        self.chan.subscribe_request_with(|request: &Extended<R>| {
             debug_assert_eq!(request.len(), 1);
-            request.clone()
+            request.deref().clone()
         })
     }
 

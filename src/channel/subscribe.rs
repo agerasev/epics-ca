@@ -2,7 +2,7 @@ use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{
-        request::{ReadRequest, TypedRequest},
+        request::{ArrayRequest, ReadRequest},
         DbEvent, DbRequest, Scalar,
     },
 };
@@ -184,7 +184,7 @@ impl Channel {
 impl<T: Scalar> TypedChannel<T> {
     pub fn subscribe_request_with<R, Q, F>(&mut self, func: F) -> Subscribe<'_, R, Q, F>
     where
-        R: ReadRequest + TypedRequest<Type = T> + ?Sized,
+        R: ArrayRequest<Type = T> + ReadRequest + ?Sized,
         Q: Send,
         F: FnMut(&R) -> Q + Send,
     {

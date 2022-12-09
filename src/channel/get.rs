@@ -2,7 +2,7 @@ use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{
-        request::{ReadRequest, TypedRequest},
+        request::{ArrayRequest, ReadRequest},
         DbRequest, Scalar,
     },
 };
@@ -166,7 +166,7 @@ impl Channel {
 impl<T: Scalar> TypedChannel<T> {
     pub fn get_request_with<R, Q, F>(&mut self, func: F) -> Get<'_, R, Q, F>
     where
-        R: ReadRequest + TypedRequest<Type = T> + ?Sized,
+        R: ArrayRequest<Type = T> + ReadRequest + ?Sized,
         Q: Send,
         F: FnOnce(&R) -> Q + Send,
     {

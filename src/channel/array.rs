@@ -2,7 +2,7 @@ use super::{Put, ScalarChannel, TypedChannel};
 use crate::{
     error::Error,
     types::{
-        request::{Extended, ReadRequest, ScalarRequest, Time, TypedRequest},
+        request::{ArrayRequest, Extended, ReadRequest, ScalarRequest, Time},
         Scalar,
     },
 };
@@ -50,7 +50,7 @@ impl<T: Scalar> ArrayChannel<T> {
 
 impl<T: Scalar> ArrayChannel<T>
 where
-    Time<T>: ReadRequest + ScalarRequest + TypedRequest<Type = T>,
+    Time<T>: ScalarRequest<Type = T> + ReadRequest,
 {
     pub async fn get_with<Q: Send, F: FnOnce(&[T]) -> Q + Send>(
         &mut self,
@@ -68,8 +68,8 @@ where
                         nord.stamp.to_system()
                     );
                     if request.stamp == nord.stamp {
-                        let len = nord.value() as usize;
-                        Some(func_cell.take().unwrap()(&request.value()[..len]))
+                        let len = *nord.value() as usize;
+                        Some(func_cell.take().unwrap()(&request.values()[..len]))
                     } else {
                         None
                     }

@@ -16,21 +16,15 @@ pub trait TypedRequest: Request {
     type Type: Scalar;
 }
 pub trait ScalarRequest: TypedRequest + Sized + Clone + Send {
-    fn value_ref(&self) -> &Self::Type {
+    fn value(&self) -> &Self::Type {
         unsafe { &*(((self as *const Self).offset(1) as *const Self::Type).offset(-1)) }
     }
     fn value_mut(&mut self) -> &mut Self::Type {
         unsafe { &mut *(((self as *mut Self).offset(1) as *mut Self::Type).offset(-1)) }
     }
-
-    fn value(&self) -> Self::Type {
-        *self.value_ref()
-    }
-    fn set_value(&mut self, value: Self::Type) {
-        *self.value_mut() = value;
-    }
 }
 
+// FIXME: Guarantee that value is copied by move.
 impl<T: Scalar> TypedRequest for T {
     type Type = T;
 }
