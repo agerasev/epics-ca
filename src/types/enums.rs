@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DbField {
     String,
@@ -169,24 +171,21 @@ impl DbRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Dbe {
-    Value,
-    Archive,
-    Log,
-    Alarm,
-    Property,
+bitflags! {
+    pub struct DbEvent: u32 {
+        const VALUE = sys::DBE_VALUE as u32;
+        const ARCHIVE = sys::DBE_ARCHIVE as u32;
+        const ALARM = sys::DBE_ALARM as u32;
+        const PROPERTY = sys::DBE_PROPERTY as u32;
+    }
 }
 
-impl Dbe {
+impl DbEvent {
+    pub fn try_from_raw(raw: i32) -> Option<Self> {
+        Self::from_bits(raw as u32)
+    }
     pub fn raw(&self) -> i32 {
-        match self {
-            Dbe::Value => sys::DBE_VALUE,
-            Dbe::Archive => sys::DBE_ARCHIVE,
-            Dbe::Log => sys::DBE_LOG,
-            Dbe::Alarm => sys::DBE_ALARM,
-            Dbe::Property => sys::DBE_PROPERTY,
-        }
+        self.bits() as i32
     }
 }
 

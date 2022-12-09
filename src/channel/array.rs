@@ -59,10 +59,9 @@ where
         let mut func_cell = Some(func);
         loop {
             let nord = self.nord.get_request::<Time<f64>>().await?;
-            let func = func_cell.take().unwrap();
             let result = self
                 .value
-                .get_request_with(move |request: &Extended<Time<T>>| {
+                .get_request_with(|request: &Extended<Time<T>>| {
                     println!(
                         "nord: {}, timestamp: {:?}",
                         nord.value(),
@@ -70,17 +69,14 @@ where
                     );
                     if request.stamp == nord.stamp {
                         let len = nord.value() as usize;
-                        Ok(func(&request.value()[..len]))
+                        Some(func_cell.take().unwrap()(&request.value()[..len]))
                     } else {
-                        Err(func)
+                        None
                     }
                 })
                 .await?;
-            match result {
-                Ok(ret) => break Ok(ret),
-                Err(func) => {
-                    func_cell = Some(func);
-                }
+            if let Some(ret) = result {
+                break Ok(ret);
             }
         }
     }
