@@ -21,7 +21,7 @@ enum GetState<R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnOnce(&R) -> Q + Send,
+    F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
 {
     Empty,
     Pending(F, PhantomData<R>),
@@ -34,7 +34,7 @@ pub struct Get<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnOnce(&R) -> Q + Send,
+    F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
 {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
@@ -48,7 +48,7 @@ impl<'a, R, Q, F> Get<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnOnce(&R) -> Q + Send,
+    F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
 {
     fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
@@ -112,7 +112,7 @@ impl<'a, R, Q, F> Future for Get<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnOnce(&R) -> Q + Send,
+    F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
 {
     type Output = Result<Q, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -145,7 +145,7 @@ impl<'a, R, Q, F> PinnedDrop for Get<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnOnce(&R) -> Q + Send,
+    F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
 {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
@@ -160,7 +160,7 @@ impl Channel {
     where
         R: ReadRequest + ?Sized,
         Q: Send,
-        F: FnOnce(&R) -> Q + Send,
+        F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
     {
         Get::new(self, func)
     }
@@ -171,7 +171,7 @@ impl<T: Scalar> TypedChannel<T> {
     where
         R: ArrayRequest<Type = T> + ReadRequest + ?Sized,
         Q: Send,
-        F: FnOnce(&R) -> Q + Send,
+        F: FnOnce(Result<&R, Error>) -> Result<Q, Error> + Send,
     {
         self.base.get_request_with(func)
     }

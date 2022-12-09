@@ -20,7 +20,7 @@ struct SubscribeState<R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(Result<&R, Error>) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
     func: F,
     output: Option<Q>,
@@ -33,7 +33,7 @@ pub struct Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(Result<&R, Error>) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
@@ -48,7 +48,7 @@ impl<'a, R, Q, F> Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(Result<&R, Error>) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
     fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
@@ -121,7 +121,7 @@ impl<'a, R, Q, F> Stream for Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(Result<&R, Error>) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
     type Item = Q;
 
@@ -153,7 +153,7 @@ impl<'a, R, Q, F> PinnedDrop for Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(Result<&R, Error>) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
@@ -175,7 +175,7 @@ impl Channel {
     where
         R: ReadRequest + ?Sized,
         Q: Send,
-        F: FnMut(Result<&R, Error>) -> Q + Send,
+        F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
     {
         Subscribe::new(self, func)
     }
@@ -186,7 +186,7 @@ impl<T: Scalar> TypedChannel<T> {
     where
         R: ArrayRequest<Type = T> + ReadRequest + ?Sized,
         Q: Send,
-        F: FnMut(Result<&R, Error>) -> Q + Send,
+        F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
     {
         Subscribe::new(self, func)
     }
