@@ -103,10 +103,10 @@ async fn array() {
             .await;
 
     let data = (0..42).collect::<Vec<_>>();
-    output.put(&data).await.unwrap();
+    output.put(&data).unwrap().await.unwrap();
     assert_eq!(input.get_vec().await.unwrap(), data);
 
     let data = (-64..0).collect::<Vec<_>>();
-    output.put(&data).await.unwrap();
+    output.put(&data).unwrap().await.unwrap();
     assert_eq!(input.get_vec().await.unwrap(), data);
 }

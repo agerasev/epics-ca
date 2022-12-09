@@ -31,7 +31,7 @@ impl Channel {
 pub struct TypedChannel<T: Scalar> {
     #[deref]
     #[deref_mut]
-    any: Channel,
+    pub(crate) base: Channel,
     #[into(ignore)]
     _p: PhantomData<T>,
 }
@@ -42,9 +42,9 @@ impl<T: Scalar> TypedChannel<T> {
     /// It is safe because the type of remote channel can change at any moment and checks are done reading/writing/monitoring anyway.
     ///
     /// If you want to check type before converting use [`AnyChannel::into_typed`].
-    pub fn new_unchecked(any: Channel) -> Self {
+    pub fn new_unchecked(base: Channel) -> Self {
         Self {
-            any,
+            base,
             _p: PhantomData,
         }
     }
@@ -89,8 +89,8 @@ mod tests {
     #[serial]
     async fn downcast() {
         let ctx = Context::new().unwrap();
-        let mut any = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
-        any.connected().await;
-        any.into_typed::<f64>().unwrap();
+        let mut base = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
+        base.connected().await;
+        base.into_typed::<f64>().unwrap();
     }
 }

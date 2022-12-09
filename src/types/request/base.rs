@@ -6,7 +6,7 @@ use crate::types::{DbRequest, EpicsString};
 ///
 /// `Self` and `Self::Raw` must be safely transmutable to each other.
 #[allow(clippy::len_without_is_empty)]
-pub unsafe trait Request {
+pub unsafe trait Request: Send + 'static {
     type Raw;
     const ENUM: DbRequest;
 

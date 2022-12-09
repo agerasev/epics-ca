@@ -10,7 +10,7 @@ use futures::Stream;
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
-    marker::PhantomData,
+    marker::{PhantomData, PhantomPinned},
     pin::Pin,
     ptr,
     task::{Context, Poll},
@@ -35,13 +35,13 @@ where
     Q: Send,
     F: FnMut(&R) -> Q + Send,
 {
-    #[pin]
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
-    #[pin]
     state: UnsafeCell<SubscribeState<R, Q, F>>,
     mask: DbEvent,
     evid: Option<sys::evid>,
+    #[pin]
+    _pp: PhantomPinned,
 }
 
 impl<'a, R, Q, F> Subscribe<'a, R, Q, F>
@@ -60,6 +60,7 @@ where
             }),
             mask: DbEvent::VALUE | DbEvent::ALARM,
             evid: None,
+            _pp: PhantomPinned,
         }
     }
 
@@ -68,6 +69,7 @@ where
     }
 
     fn start(self: Pin<&mut Self>) -> Result<(), Error> {
+        println!("Start: {:p}", self);
         assert!(self.evid.is_none());
         let this = self.project();
         let owner = this.owner;
@@ -110,6 +112,7 @@ where
             state.output = Some((state.func)(request));
         }
         proc.result = Some(result);
+        drop(proc);
         user_data.waker.wake();
     }
 }
@@ -123,6 +126,7 @@ where
     type Item = Result<Q, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        println!("Poll next: {:p}", self);
         self.owner.user_data().waker.register(cx.waker());
         if self.evid.is_none() {
             self.start()?;
@@ -132,7 +136,10 @@ where
         let mut proc = this.owner.user_data().process.lock().unwrap();
         let state = unsafe { &mut *this.state.get() };
         let poll = match proc.result.take() {
-            Some(Ok(())) => Poll::Ready(Some(Ok(state.output.take().unwrap()))),
+            Some(Ok(())) => {
+                let output = state.output.take().unwrap();
+                Poll::Ready(Some(Ok(output)))
+            }
             Some(Err(err)) => Poll::Ready(Some(Err(err))),
             None => Poll::Pending,
         };

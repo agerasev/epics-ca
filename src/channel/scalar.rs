@@ -7,6 +7,7 @@ use crate::{
     },
 };
 use derive_more::{Deref, DerefMut, Into};
+use futures::Stream;
 
 impl<T: Scalar> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -33,23 +34,38 @@ impl<T: Scalar> ScalarChannel<T> {
         Self { chan }
     }
 
+    pub async fn put(&mut self, value: T) -> Result<(), Error> {
+        self.chan.put_slice(&[value])?.await
+    }
+
     pub async fn get_request<R>(&mut self) -> Result<R, Error>
     where
         R: ReadRequest + TypedRequest<Type = T> + ScalarRequest,
     {
-        self.get_request_with(|request: &R| {
-            debug_assert_eq!(request.len(), 1);
-            request.clone()
-        })
-        .await
+        self.chan
+            .get_request_with(|request: &R| {
+                debug_assert_eq!(request.len(), 1);
+                request.clone()
+            })
+            .await
     }
 
     pub async fn get(&mut self) -> Result<T, Error> {
         self.get_request::<T>().await
     }
 
-    pub async fn put(&mut self, value: T) -> Result<(), Error> {
-        self.put_slice(&[value])?.await
+    pub fn subscribe_request<R>(&mut self) -> impl Stream<Item = Result<R, Error>> + '_
+    where
+        R: ReadRequest + TypedRequest<Type = T> + ScalarRequest,
+    {
+        self.chan.subscribe_request_with(|request: &R| {
+            debug_assert_eq!(request.len(), 1);
+            request.clone()
+        })
+    }
+
+    pub fn subscribe(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
+        self.subscribe_request::<T>()
     }
 }
 
@@ -58,6 +74,7 @@ mod tests {
     use crate::{Channel, Context};
     use async_std::test as async_test;
     use c_str_macro::c_str;
+    use futures::{join, pin_mut, StreamExt};
     use serial_test::serial;
     use std::f64::consts::PI;
 
@@ -75,5 +92,41 @@ mod tests {
         input.connected().await;
         let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
         assert_eq!(input.get().await.unwrap(), PI);
+    }
+
+    #[async_test]
+    #[serial]
+    async fn subscribe() {
+        let ctx = Context::new().unwrap();
+
+        let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
+        output.connected().await;
+        let mut output = output.into_typed::<f64>().unwrap().into_scalar().unwrap();
+
+        let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
+        input.connected().await;
+        let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
+
+        output.put(0.0).await.unwrap();
+        let monitor = input.subscribe();
+        pin_mut!(monitor);
+        assert_eq!(monitor.next().await.unwrap().unwrap(), 0.0);
+
+        let count = 0x10;
+        join!(
+            async {
+                for i in 0..count {
+                    output.put((i + 1) as f64 / 16.0).await.unwrap();
+                }
+            },
+            async {
+                for i in 0..count {
+                    assert_eq!(
+                        monitor.next().await.unwrap().unwrap(),
+                        (i + 1) as f64 / 16.0
+                    );
+                }
+            }
+        );
     }
 }

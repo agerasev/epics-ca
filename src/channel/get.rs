@@ -10,7 +10,7 @@ use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
     future::Future,
-    marker::PhantomData,
+    marker::{PhantomData, PhantomPinned},
     mem,
     pin::Pin,
     ptr,
@@ -36,12 +36,12 @@ where
     Q: Send,
     F: FnOnce(&R) -> Q + Send,
 {
-    #[pin]
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
-    #[pin]
     state: UnsafeCell<GetState<R, Q, F>>,
     started: bool,
+    #[pin]
+    _pp: PhantomPinned,
 }
 
 impl<'a, R, Q, F> Get<'a, R, Q, F>
@@ -55,6 +55,7 @@ where
             owner,
             state: UnsafeCell::new(GetState::Pending(func, PhantomData)),
             started: false,
+            _pp: PhantomPinned,
         }
     }
 
@@ -152,32 +153,32 @@ where
 }
 
 impl Channel {
-    pub async fn get_request_with<R, Q, F>(&mut self, func: F) -> Result<Q, Error>
+    pub fn get_request_with<R, Q, F>(&mut self, func: F) -> Get<'_, R, Q, F>
     where
         R: ReadRequest + ?Sized,
         Q: Send,
         F: FnOnce(&R) -> Q + Send,
     {
-        Get::new(self, func).await
+        Get::new(self, func)
     }
 }
 
 impl<T: Scalar> TypedChannel<T> {
-    pub async fn get_request_with<R, Q, F>(&mut self, func: F) -> Result<Q, Error>
+    pub fn get_request_with<R, Q, F>(&mut self, func: F) -> Get<'_, R, Q, F>
     where
         R: ReadRequest + TypedRequest<Type = T> + ?Sized,
         Q: Send,
         F: FnOnce(&R) -> Q + Send,
     {
-        Get::new(self, func).await
+        self.base.get_request_with(func)
     }
 
-    pub async fn get_with<Q, F>(&mut self, func: F) -> Result<Q, Error>
+    pub fn get_with<Q, F>(&mut self, func: F) -> Get<'_, [T], Q, F>
     where
         Q: Send,
         F: FnOnce(&[T]) -> Q + Send,
     {
-        self.get_request_with(func).await
+        self.get_request_with(func)
     }
 
     pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {

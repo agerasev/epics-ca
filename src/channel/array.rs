@@ -1,4 +1,4 @@
-use super::{ScalarChannel, TypedChannel};
+use super::{Put, ScalarChannel, TypedChannel};
 use crate::{
     error::Error,
     types::{
@@ -43,8 +43,8 @@ impl<T: Scalar> ArrayChannel<T> {
         Ok(Self { value: chan, nord })
     }
 
-    pub async fn put(&mut self, data: &[T]) -> Result<(), Error> {
-        self.value.put_slice(data)?.await
+    pub fn put(&mut self, data: &[T]) -> Result<Put<'_>, Error> {
+        self.value.put_slice(data)
     }
 }
 
@@ -127,7 +127,7 @@ mod tests {
             .unwrap();
 
         let data = (0..16).into_iter().collect::<Vec<i32>>();
-        output.put(&data).await.unwrap();
+        output.put(&data).unwrap().await.unwrap();
         assert_eq!(input.get_vec().await.unwrap(), data);
     }
 }
