@@ -25,7 +25,7 @@ where
 {
     Empty,
     Pending(F, PhantomData<R>),
-    Ready(Q),
+    Ready(Result<Q, Error>),
 }
 
 #[must_use]
@@ -77,7 +77,6 @@ where
             })
             .map(|()| {
                 owner.context().flush_io();
-                proc.result = None;
                 *this.started = true
             })
         })
@@ -96,13 +95,15 @@ where
             GetState::Pending(func, _) => func,
             _ => unreachable!(),
         };
-        if result.is_ok() {
-            debug_assert_eq!(R::ENUM, DbRequest::try_from_raw(args.type_ as _).unwrap());
-            debug_assert_ne!(args.count, 0);
-            let request = R::ref_from_ptr(args.dbr as *const u8, args.count as usize);
-            *state = GetState::Ready(func(request));
-        }
-        proc.result = Some(result);
+        *state = GetState::Ready(match result {
+            Ok(()) => {
+                debug_assert_eq!(R::ENUM, DbRequest::try_from_raw(args.type_ as _).unwrap());
+                debug_assert_ne!(args.count, 0);
+                let request = R::ref_from_ptr(args.dbr as *const u8, args.count as usize);
+                Ok(func(request))
+            }
+            Err(err) => Err(err),
+        });
         user_data.waker.wake();
     }
 }
@@ -123,13 +124,16 @@ where
         let this = self.project();
         let mut proc = this.owner.user_data().process.lock().unwrap();
         let state = unsafe { &mut *this.state.get() };
-        let poll = match proc.result.take() {
-            Some(Ok(())) => match mem::replace(state, GetState::Empty) {
-                GetState::Ready(ret) => Poll::Ready(Ok(ret)),
-                _ => unreachable!(),
+        let poll = match mem::replace(state, GetState::Empty) {
+            GetState::Empty => unreachable!(),
+            GetState::Pending(func, _) => {
+                *state = GetState::Pending(func, PhantomData);
+                Poll::Pending
+            }
+            GetState::Ready(res) => match res {
+                Ok(ret) => Poll::Ready(Ok(ret)),
+                Err(err) => Poll::Ready(Err(err)),
             },
-            Some(Err(err)) => Poll::Ready(Err(err)),
-            None => Poll::Pending,
         };
         drop(proc);
         poll
@@ -148,7 +152,6 @@ where
         let mut proc = self.owner.user_data().process.lock().unwrap();
         proc.change_id();
         proc.state = ptr::null_mut();
-        proc.result = None;
     }
 }
 

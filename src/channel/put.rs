@@ -26,7 +26,7 @@ impl Channel {
                 })
                 .map(|()| {
                     self.context().flush_io();
-                    proc.result = None;
+                    proc.put_res = None;
                 })
             })
             .map(|()| Put { owner: self })
@@ -39,7 +39,7 @@ impl Channel {
         if proc.id() != args.usr as usize {
             return;
         }
-        proc.result = Some(result_from_raw(args.status));
+        proc.put_res = Some(result_from_raw(args.status));
         user_data.waker.wake();
     }
 }
@@ -56,7 +56,7 @@ impl<'a> Future for Put<'a> {
         let user_data = self.owner.user_data();
         user_data.waker.register(cx.waker());
         let mut proc = user_data.process.lock().unwrap();
-        match proc.result.take() {
+        match proc.put_res.take() {
             Some(status) => Poll::Ready(status),
             None => Poll::Pending,
         }
@@ -67,7 +67,7 @@ impl<'a> Drop for Put<'a> {
     fn drop(&mut self) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
         proc.change_id();
-        proc.result = None;
+        proc.put_res = None;
     }
 }
 

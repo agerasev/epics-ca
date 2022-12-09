@@ -8,7 +8,8 @@ use crate::{
 };
 use derive_more::{Deref, DerefMut, Into};
 use futures::Stream;
-use std::ops::Deref;
+use pin_project::pin_project;
+use std::{collections::VecDeque, marker::PhantomData, ops::Deref};
 
 impl<T: Scalar> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -68,6 +69,21 @@ impl<T: Scalar> ScalarChannel<T> {
     pub fn subscribe(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
         self.subscribe_request::<T>()
     }
+
+    pub fn subscribe_buffered(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
+        self.chan.subscribe_with(|data: &[T]| {
+            debug_assert_eq!(data.len(), 1);
+            data[0]
+        })
+    }
+}
+
+#[pin_project]
+pub struct SubscribeBuffered<'a, T: Scalar, S: Stream<Item = Result<T, Error>> + 'a> {
+    #[pin]
+    stream: S,
+    buffer: VecDeque<Result<T, Error>>,
+    _p: PhantomData<&'a u8>,
 }
 
 #[cfg(test)]

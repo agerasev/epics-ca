@@ -20,7 +20,7 @@ struct SubscribeState<R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(&R) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Q + Send,
 {
     func: F,
     output: Option<Q>,
@@ -33,7 +33,7 @@ pub struct Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(&R) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Q + Send,
 {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
@@ -48,7 +48,7 @@ impl<'a, R, Q, F> Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(&R) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Q + Send,
 {
     fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
@@ -121,9 +121,9 @@ impl<'a, R, Q, F> Stream for Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(&R) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Q + Send,
 {
-    type Item = Result<Q, Error>;
+    type Item = Q;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         println!("Poll next: {:p}", self);
@@ -153,7 +153,7 @@ impl<'a, R, Q, F> PinnedDrop for Subscribe<'a, R, Q, F>
 where
     R: ReadRequest + ?Sized,
     Q: Send,
-    F: FnMut(&R) -> Q + Send,
+    F: FnMut(Result<&R, Error>) -> Q + Send,
 {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
@@ -175,7 +175,7 @@ impl Channel {
     where
         R: ReadRequest + ?Sized,
         Q: Send,
-        F: FnMut(&R) -> Q + Send,
+        F: FnMut(Result<&R, Error>) -> Q + Send,
     {
         Subscribe::new(self, func)
     }
@@ -186,7 +186,7 @@ impl<T: Scalar> TypedChannel<T> {
     where
         R: ArrayRequest<Type = T> + ReadRequest + ?Sized,
         Q: Send,
-        F: FnMut(&R) -> Q + Send,
+        F: FnMut(Result<&R, Error>) -> Q + Send,
     {
         Subscribe::new(self, func)
     }
@@ -194,12 +194,14 @@ impl<T: Scalar> TypedChannel<T> {
     pub fn subscribe_with<Q, F>(&mut self, func: F) -> Subscribe<'_, [T], Q, F>
     where
         Q: Send,
-        F: FnMut(&[T]) -> Q + Send,
+        F: FnMut(Result<&[T], Error>) -> Q + Send,
     {
         self.subscribe_request_with(func)
     }
 
     pub fn subscribe_vec(&mut self) -> impl Stream<Item = Result<Vec<T>, Error>> + '_ {
-        self.subscribe_with(|s: &[T]| Vec::from_iter(s.iter().cloned()))
+        self.subscribe_with(|res: Result<&[T], Error>| {
+            res.map(|s| Vec::from_iter(s.iter().cloned()))
+        })
     }
 }
