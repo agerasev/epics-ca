@@ -179,7 +179,7 @@ impl<'a, T: Scalar> GetFn for GetToSlice<'a, T> {
         input.map(|src| {
             let len = usize::min(self.dst.len(), src.len());
             self.dst[..len].copy_from_slice(&src[..len]);
-            len
+            src.len()
         })
     }
 }
@@ -191,7 +191,7 @@ pub struct GetVec<T: Scalar> {
 impl<T: Scalar> GetFn for GetVec<T> {
     type Request = [T];
     type Output = Vec<T>;
-    fn apply(self, input: Result<&[T], Error>) -> Result<Self::Output, Error> {
+    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
         input.map(|src| Vec::from_iter(src.iter().cloned()))
     }
 }
