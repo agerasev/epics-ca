@@ -6,6 +6,7 @@ use crate::{
         DbRequest, Scalar,
     },
 };
+use derive_more::From;
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
@@ -24,7 +25,7 @@ pub trait GetFn: Send {
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error>;
 }
 
-enum GetState<F: GetFn> {
+pub(crate) enum GetState<F: GetFn> {
     Empty,
     Pending(F),
     Ready(Result<F::Output, Error>),
@@ -160,14 +161,15 @@ impl<T: Scalar> TypedChannel<T> {
     }
 
     pub fn get_to_slice<'a, 'b>(&'a mut self, dst: &'b mut [T]) -> Get<'a, GetToSlice<'b, T>> {
-        self.get_with(GetToSlice { dst })
+        self.get_with(GetToSlice::from(dst))
     }
 
     pub fn get_vec(&mut self) -> Get<'_, GetVec<T>> {
-        self.get_with(GetVec { _p: PhantomData })
+        self.get_with(GetVec::default())
     }
 }
 
+#[derive(From)]
 pub struct GetToSlice<'a, T: Scalar> {
     dst: &'a mut [T],
 }
@@ -186,6 +188,12 @@ impl<'a, T: Scalar> GetFn for GetToSlice<'a, T> {
 
 pub struct GetVec<T: Scalar> {
     _p: PhantomData<T>,
+}
+
+impl<T: Scalar> Default for GetVec<T> {
+    fn default() -> Self {
+        Self { _p: PhantomData }
+    }
 }
 
 impl<T: Scalar> GetFn for GetVec<T> {

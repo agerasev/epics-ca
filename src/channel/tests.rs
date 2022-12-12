@@ -1,6 +1,6 @@
 use crate::{
     types::{DbField, EpicsEnum, EpicsString, Scalar},
-    Context, ScalarChannel,
+    ArrayChannel, Context, ScalarChannel,
 };
 use async_std::test as async_test;
 use c_str_macro::c_str;
@@ -10,8 +10,6 @@ use std::{
     ffi::CStr,
     sync::Arc,
 };
-
-use super::ArrayChannel;
 
 async fn connect_and_check<T: Scalar>(
     ctx: Arc<Context>,
@@ -34,10 +32,10 @@ async fn analog() {
     let mut input =
         connect_and_check::<f64>(ctx.clone(), c_str!("ca:test:ai"), DbField::Double).await;
 
-    output.put(E).await.unwrap();
+    output.put(E).unwrap().await.unwrap();
     assert_eq!(input.get().await.unwrap(), E);
 
-    output.put(PI).await.unwrap();
+    output.put(PI).unwrap().await.unwrap();
     assert_eq!(input.get().await.unwrap(), PI);
 }
 
@@ -50,10 +48,10 @@ async fn binary() {
     let mut input =
         connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bi"), DbField::Enum).await;
 
-    output.put(EpicsEnum(1)).await.unwrap();
+    output.put(EpicsEnum(1)).unwrap().await.unwrap();
     assert_eq!(input.get().await.unwrap(), EpicsEnum(1));
 
-    output.put(EpicsEnum(0)).await.unwrap();
+    output.put(EpicsEnum(0)).unwrap().await.unwrap();
     assert_eq!(input.get().await.unwrap(), EpicsEnum(0));
 }
 
@@ -69,11 +67,11 @@ async fn string() {
             .await;
 
     let data = EpicsString::from_cstr(c_str!("abcdefghijklmnopqrstuvwxyz")).unwrap();
-    output.put(data).await.unwrap();
+    output.put(data).unwrap().await.unwrap();
     assert_eq!(input.get().await.unwrap(), data);
 
     let data = EpicsString::from_cstr(c_str!("0123456789abcdefghijABCDEFGHIJ!@#$%^&*(")).unwrap();
-    output.put(data).await.unwrap();
+    output.put(data).unwrap().await.unwrap();
     assert_eq!(input.get().await.unwrap(), data);
 }
 

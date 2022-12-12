@@ -1,4 +1,4 @@
-//mod array;
+mod array;
 mod base;
 mod get;
 mod put;
@@ -6,7 +6,7 @@ mod scalar;
 mod subscribe;
 mod typed;
 
-//pub use array::*;
+pub use array::*;
 pub use base::*;
 pub use get::*;
 pub use put::*;
@@ -36,5 +36,5 @@ impl Context {
     }
 }
 
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
