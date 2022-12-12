@@ -4,6 +4,6 @@ pub mod error;
 pub mod types;
 pub mod utils;
 
-pub use channel::{Channel, ScalarChannel, TypedChannel};
+pub use channel::{Channel, TypedChannel};
 pub use context::Context;
 pub use error::Error;

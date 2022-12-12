@@ -74,8 +74,11 @@ impl<T: Scalar> ScalarChannel<T> {
     pub fn subscribe(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
         self.subscribe_request::<T>()
     }
-    /*
-    pub fn subscribe_buffered(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
+
+    pub fn subscribe_buffered(
+        &mut self,
+    ) -> SubscribeBuffered<T, _> {
+        SubscribeBuffered {
         self.chan.subscribe_with(|res: Result<&[T], Error>| {
             res.map(|data| {
                 debug_assert_eq!(data.len(), 1);
@@ -83,25 +86,23 @@ impl<T: Scalar> ScalarChannel<T> {
             })
         })
     }
-    */
 }
 
 #[pin_project]
-pub struct SubscribeBuffered<'a, T: Scalar, S: Stream<Item = Result<T, Error>> + 'a> {
+pub struct SubscribeBuffered<T: Scalar, S> {
     #[pin]
     stream: S,
     buffer: VecDeque<Result<T, Error>>,
-    _p: PhantomData<&'a u8>,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{Channel, Context};
-    use async_std::test as async_test;
+    use async_std::{task::sleep, test as async_test};
     use c_str_macro::c_str;
     use futures::{join, pin_mut, StreamExt};
     use serial_test::serial;
-    use std::f64::consts::PI;
+    use std::{f64::consts::PI, time::Duration};
 
     #[async_test]
     #[serial]
@@ -121,7 +122,7 @@ mod tests {
 
     #[async_test]
     #[serial]
-    async fn subscribe() {
+    async fn subscribe_buffered() {
         let ctx = Context::new().unwrap();
 
         let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
@@ -150,6 +151,7 @@ mod tests {
                         monitor.next().await.unwrap().unwrap(),
                         (i + 1) as f64 / 16.0
                     );
+                    sleep(Duration::from_millis(10)).await;
                 }
             }
         );

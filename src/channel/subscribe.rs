@@ -69,7 +69,6 @@ where
     }
 
     fn start(self: Pin<&mut Self>) -> Result<(), Error> {
-        println!("Start: {:p}", self);
         assert!(self.evid.is_none());
         let this = self.project();
         let owner = this.owner;
@@ -127,7 +126,6 @@ where
     type Item = Result<Q, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        println!("Poll next: {:p}", self);
         self.owner.user_data().waker.register(cx.waker());
         if self.evid.is_none() {
             self.start()?;
