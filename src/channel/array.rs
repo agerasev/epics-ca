@@ -2,7 +2,7 @@ use super::{GetFn, GetState, GetToSlice, GetVec, Put, ScalarChannel, TypedChanne
 use crate::{
     error::Error,
     types::{
-        request::{ArrayRequest, Extended, ReadRequest, ScalarRequest, Time},
+        request::{Extended, Meta, MetaValue, Time, TypedRequest},
         Scalar,
     },
 };
@@ -50,12 +50,12 @@ impl<T: Scalar> ArrayChannel<T> {
 
 impl<T: Scalar> ArrayChannel<T>
 where
-    Time<T>: ScalarRequest<Type = T> + ReadRequest,
+    Time<T>: Meta<T>,
 {
     pub async fn get_with<F: GetFn<Request = [T]>>(&mut self, func: F) -> Result<F::Output, Error> {
         let mut state = GetState::Pending(func);
         loop {
-            let nord = self.nord.get_request::<Time<f64>>().await?;
+            let nord = self.nord.get_request::<Extended<f64, Time<f64>>>().await?;
             self.value
                 .get_request_with(GetArrayWith {
                     nord,
@@ -78,15 +78,15 @@ where
 }
 
 pub struct GetArrayWith<'a, T: Scalar, F: GetFn<Request = [T]>> {
-    nord: Time<f64>,
+    nord: MetaValue<f64, Time<f64>>,
     state: &'a mut GetState<F>,
 }
 
 impl<'a, T: Scalar, F: GetFn<Request = [T]>> GetFn for GetArrayWith<'a, T, F>
 where
-    Time<T>: ScalarRequest<Type = T> + ReadRequest,
+    Time<T>: Meta<T>,
 {
-    type Request = Extended<Time<T>>;
+    type Request = Extended<T, Time<T>>;
     type Output = ();
 
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {

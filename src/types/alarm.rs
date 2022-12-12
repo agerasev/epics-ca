@@ -125,7 +125,7 @@ impl AlarmCondition {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Alarm {
     pub condition: AlarmCondition,
     pub severity: AlarmSeverity,

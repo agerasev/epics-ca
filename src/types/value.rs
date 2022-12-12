@@ -1,17 +1,11 @@
 use super::{DbField, EpicsEnum, EpicsString};
-use std::ptr;
 
 /// # Safety
 ///
 /// Should be implemented only for types supported by channel access.
 pub unsafe trait Scalar: Copy + Send + Sized + 'static {
     type Raw: Copy + Send + Sized + 'static;
-
     const ENUM: DbField;
-
-    fn from_raw(raw: <Self as Scalar>::Raw) -> Self {
-        unsafe { ptr::read(&raw as *const _ as *const Self) }
-    }
 }
 pub trait Int: Scalar {}
 pub trait Float: Scalar {}

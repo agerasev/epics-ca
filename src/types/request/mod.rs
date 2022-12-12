@@ -1,9 +1,9 @@
 mod base;
-mod extended;
+mod meta;
 mod typed;
 
 pub use base::*;
-pub use extended::*;
+pub use meta::*;
 pub use typed::*;
 
 #[cfg(test)]

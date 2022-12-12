@@ -2,12 +2,12 @@ use super::{Get, GetFn, Put, Subscribe, SubscribeFn, TypedChannel};
 use crate::{
     error::{self, Error},
     types::{
-        request::{Extended, ReadRequest, Request, ScalarRequest},
+        request::{ReadRequest, TypedRequest},
         Scalar,
     },
 };
 use derive_more::{Deref, DerefMut, Into};
-use std::{collections::VecDeque, marker::PhantomData, ops::Deref};
+use std::{collections::VecDeque, marker::PhantomData};
 
 impl<T: Scalar> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -40,25 +40,25 @@ impl<T: Scalar> ScalarChannel<T> {
 
     pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
     where
-        R: ScalarRequest<Type = T> + ReadRequest,
+        R: TypedRequest<Field = T> + ReadRequest + ?Sized,
     {
         self.chan.get_request_with(GetScalar { _p: PhantomData })
     }
 
     pub async fn get(&mut self) -> Result<T, Error> {
-        self.get_request::<T>().await
+        self.get_request::<[T]>().await
     }
 
     pub fn subscribe_request<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
     where
-        R: ScalarRequest<Type = T> + ReadRequest,
+        R: TypedRequest<Field = T> + ReadRequest + ?Sized,
     {
         self.chan
             .subscribe_request_with(SubscribeScalar { last: None })
     }
 
-    pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<T>> {
-        self.subscribe_request::<T>()
+    pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<[T]>> {
+        self.subscribe_request::<[T]>()
     }
 
     pub fn subscribe_buffered(&mut self) -> Subscribe<'_, SubscribeBuffered<T>> {
@@ -68,32 +68,32 @@ impl<T: Scalar> ScalarChannel<T> {
     }
 }
 
-pub struct GetScalar<R: ScalarRequest + ReadRequest> {
+pub struct GetScalar<R: TypedRequest + ReadRequest + ?Sized> {
     _p: PhantomData<R>,
 }
 
-impl<R: ScalarRequest + ReadRequest> GetFn for GetScalar<R> {
-    type Request = Extended<R>;
-    type Output = R;
+impl<R: TypedRequest + ReadRequest + ?Sized> GetFn for GetScalar<R> {
+    type Request = R;
+    type Output = R::Scalar;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
-        input.map(|req| {
+        input.and_then(|req| {
             debug_assert_eq!(req.len(), 1);
-            req.deref().clone()
+            req.to_scalar()
         })
     }
 }
 
-pub struct SubscribeScalar<R: ScalarRequest + ReadRequest> {
-    last: Option<Result<R, Error>>,
+pub struct SubscribeScalar<R: TypedRequest + ReadRequest + ?Sized> {
+    last: Option<Result<R::Scalar, Error>>,
 }
 
-impl<R: ScalarRequest + ReadRequest> SubscribeFn for SubscribeScalar<R> {
-    type Request = Extended<R>;
-    type Output = R;
+impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeScalar<R> {
+    type Request = R;
+    type Output = R::Scalar;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.last = Some(input.map(|req| {
+        self.last = Some(input.and_then(|req| {
             debug_assert_eq!(req.len(), 1);
-            req.deref().clone()
+            req.to_scalar()
         }));
     }
     fn pop(&mut self) -> Option<Result<Self::Output, Error>> {

@@ -17,7 +17,7 @@ pub unsafe trait Request: Send + 'static {
     unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self;
 }
 
-macro_rules! impl_sized_request_methods {
+macro_rules! impl_scalar_request_methods {
     () => {
         fn len(&self) -> usize {
             1
@@ -28,7 +28,6 @@ macro_rules! impl_sized_request_methods {
         }
     };
 }
-pub(crate) use impl_sized_request_methods;
 
 pub trait WriteRequest: Request {}
 pub trait ReadRequest: Request {}
@@ -40,7 +39,7 @@ pub struct PutAckt(pub u16);
 unsafe impl Request for PutAckt {
     type Raw = sys::dbr_put_ackt_t;
     const ENUM: DbRequest = DbRequest::PutAckt;
-    impl_sized_request_methods!();
+    impl_scalar_request_methods!();
 }
 impl WriteRequest for PutAckt {}
 
@@ -51,7 +50,7 @@ pub struct PutAcks(pub u16);
 unsafe impl Request for PutAcks {
     type Raw = sys::dbr_put_acks_t;
     const ENUM: DbRequest = DbRequest::PutAcks;
-    impl_sized_request_methods!();
+    impl_scalar_request_methods!();
 }
 impl WriteRequest for PutAcks {}
 
@@ -62,7 +61,7 @@ pub struct StsackString(pub EpicsString);
 unsafe impl Request for StsackString {
     type Raw = sys::dbr_stsack_string_t;
     const ENUM: DbRequest = DbRequest::PutAcks;
-    impl_sized_request_methods!();
+    impl_scalar_request_methods!();
 }
 impl ReadRequest for StsackString {}
 
@@ -73,6 +72,6 @@ pub struct ClassName(pub EpicsString);
 unsafe impl Request for ClassName {
     type Raw = sys::dbr_class_name_t;
     const ENUM: DbRequest = DbRequest::ClassName;
-    impl_sized_request_methods!();
+    impl_scalar_request_methods!();
 }
 impl ReadRequest for ClassName {}
