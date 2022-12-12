@@ -60,19 +60,12 @@ impl<T: Scalar> ScalarChannel<T> {
     pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<T>> {
         self.subscribe_request::<T>()
     }
-    /*
-    pub fn subscribe_buffered(
-        &mut self,
-    ) -> SubscribeBuffered<T, _> {
-        SubscribeBuffered {
-        self.chan.subscribe_with(|res: Result<&[T], Error>| {
-            res.map(|data| {
-                debug_assert_eq!(data.len(), 1);
-                data[0]
-            })
+
+    pub fn subscribe_buffered(&mut self) -> Subscribe<'_, SubscribeBuffered<T>> {
+        self.chan.subscribe_with(SubscribeBuffered {
+            queue: VecDeque::new(),
         })
     }
-    */
 }
 
 pub struct GetScalar<R: ScalarRequest + ReadRequest> {
@@ -108,14 +101,23 @@ impl<R: ScalarRequest + ReadRequest> SubscribeFn for SubscribeScalar<R> {
     }
 }
 
-/*
-#[pin_project]
-pub struct SubscribeBuffered<T: Scalar, S> {
-    #[pin]
-    stream: S,
-    buffer: VecDeque<Result<T, Error>>,
+pub struct SubscribeBuffered<T: Scalar> {
+    queue: VecDeque<Result<T, Error>>,
 }
-*/
+
+impl<T: Scalar> SubscribeFn for SubscribeBuffered<T> {
+    type Request = [T];
+    type Output = T;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        self.queue.push_back(input.map(|data| {
+            debug_assert_eq!(data.len(), 1);
+            data[0]
+        }));
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.queue.pop_front()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -156,7 +158,7 @@ mod tests {
         let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
 
         output.put(0.0).unwrap().await.unwrap();
-        let monitor = input.subscribe();
+        let monitor = input.subscribe_buffered();
         pin_mut!(monitor);
         assert_eq!(monitor.next().await.unwrap().unwrap(), 0.0);
 
