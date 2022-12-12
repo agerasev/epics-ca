@@ -1,4 +1,4 @@
-use super::{Put, ScalarChannel, TypedChannel};
+use super::{GetFn, GetState, GetToSlice, GetVec, Put, ScalarChannel, TypedChannel};
 use crate::{
     error::Error,
     types::{
@@ -6,7 +6,7 @@ use crate::{
         Scalar,
     },
 };
-use std::ffi::CString;
+use std::{ffi::CString, mem};
 
 impl<T: Scalar> TypedChannel<T> {
     pub async fn into_array(self) -> Result<ArrayChannel<T>, Error> {
@@ -52,47 +52,65 @@ impl<T: Scalar> ArrayChannel<T>
 where
     Time<T>: ScalarRequest<Type = T> + ReadRequest,
 {
-    pub async fn get_with<Q: Send, F: FnOnce(&[T]) -> Q + Send>(
-        &mut self,
-        func: F,
-    ) -> Result<Q, Error> {
-        let mut func_cell = Some(func);
+    pub async fn get_with<F: GetFn<Request = [T]>>(&mut self, func: F) -> Result<F::Output, Error> {
+        let mut state = GetState::Pending(func);
         loop {
             let nord = self.nord.get_request::<Time<f64>>().await?;
-            let result = self
-                .value
-                .get_request_with(|request: &Extended<Time<T>>| {
-                    println!(
-                        "nord: {}, timestamp: {:?}",
-                        nord.value(),
-                        nord.stamp.to_system()
-                    );
-                    if request.stamp == nord.stamp {
-                        let len = *nord.value() as usize;
-                        Some(func_cell.take().unwrap()(&request.values()[..len]))
-                    } else {
-                        None
-                    }
+            self.value
+                .get_request_with(GetArrayWith {
+                    nord,
+                    state: &mut state,
                 })
                 .await?;
-            if let Some(ret) = result {
-                break Ok(ret);
+            if let GetState::Ready(output) = state {
+                break output;
             }
         }
     }
 
     pub async fn get_to_slice(&mut self, dst: &mut [T]) -> Result<usize, Error> {
-        self.get_with(|src: &[T]| {
-            let len = usize::min(dst.len(), src.len());
-            dst[..len].copy_from_slice(&src[..len]);
-            len
-        })
-        .await
+        self.get_with(GetToSlice::from(dst)).await
     }
 
     pub async fn get_vec(&mut self) -> Result<Vec<T>, Error> {
-        self.get_with(|s: &[T]| Vec::from_iter(s.iter().cloned()))
-            .await
+        self.get_with(GetVec::default()).await
+    }
+}
+
+pub struct GetArrayWith<'a, T: Scalar, F: GetFn<Request = [T]>> {
+    nord: Time<f64>,
+    state: &'a mut GetState<F>,
+}
+
+impl<'a, T: Scalar, F: GetFn<Request = [T]>> GetFn for GetArrayWith<'a, T, F>
+where
+    Time<T>: ScalarRequest<Type = T> + ReadRequest,
+{
+    type Request = Extended<Time<T>>;
+    type Output = ();
+
+    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
+        let req = match input {
+            Ok(req) => {
+                let len = *self.nord.value() as usize;
+                println!(
+                    "nord: {}, timestamp: {:?}",
+                    len,
+                    self.nord.stamp.to_system()
+                );
+                if req.stamp != self.nord.stamp {
+                    return Ok(());
+                }
+                Ok(&req.values()[..len])
+            }
+            Err(err) => Err(err),
+        };
+        let func = match mem::replace(self.state, GetState::Empty) {
+            GetState::Pending(func) => func,
+            _ => unreachable!(),
+        };
+        *self.state = GetState::Ready(func.apply(req));
+        Ok(())
     }
 }
 

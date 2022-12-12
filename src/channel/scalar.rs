@@ -1,4 +1,4 @@
-use super::TypedChannel;
+use super::{Get, GetFn, Put, Subscribe, SubscribeFn, TypedChannel};
 use crate::{
     error::{self, Error},
     types::{
@@ -7,8 +7,7 @@ use crate::{
     },
 };
 use derive_more::{Deref, DerefMut, Into};
-use futures::Stream;
-use std::ops::Deref;
+use std::{collections::VecDeque, marker::PhantomData, ops::Deref};
 
 impl<T: Scalar> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -35,49 +34,99 @@ impl<T: Scalar> ScalarChannel<T> {
         Self { chan }
     }
 
-    pub async fn put(&mut self, value: T) -> Result<(), Error> {
-        self.chan.put_slice(&[value])?.await
+    pub fn put(&mut self, value: T) -> Result<Put<'_>, Error> {
+        self.chan.put_slice(&[value])
     }
 
-    pub async fn get_request<R>(&mut self) -> Result<R, Error>
+    pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
     where
         R: ScalarRequest<Type = T> + ReadRequest,
     {
-        self.chan
-            .get_request_with(|request: &Extended<R>| {
-                debug_assert_eq!(request.len(), 1);
-                request.deref().clone()
-            })
-            .await
+        self.chan.get_request_with(GetScalar { _p: PhantomData })
     }
 
     pub async fn get(&mut self) -> Result<T, Error> {
         self.get_request::<T>().await
     }
 
-    pub fn subscribe_request<R>(&mut self) -> impl Stream<Item = Result<R, Error>> + '_
+    pub fn subscribe_request<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
     where
         R: ScalarRequest<Type = T> + ReadRequest,
     {
-        self.chan.subscribe_request_with(|request: &Extended<R>| {
-            debug_assert_eq!(request.len(), 1);
-            request.deref().clone()
-        })
+        self.chan
+            .subscribe_request_with(SubscribeScalar { last: None })
     }
 
-    pub fn subscribe(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
+    pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<T>> {
         self.subscribe_request::<T>()
+    }
+
+    pub fn subscribe_buffered(&mut self) -> Subscribe<'_, SubscribeBuffered<T>> {
+        self.chan.subscribe_with(SubscribeBuffered {
+            queue: VecDeque::new(),
+        })
+    }
+}
+
+pub struct GetScalar<R: ScalarRequest + ReadRequest> {
+    _p: PhantomData<R>,
+}
+
+impl<R: ScalarRequest + ReadRequest> GetFn for GetScalar<R> {
+    type Request = Extended<R>;
+    type Output = R;
+    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
+        input.map(|req| {
+            debug_assert_eq!(req.len(), 1);
+            req.deref().clone()
+        })
+    }
+}
+
+pub struct SubscribeScalar<R: ScalarRequest + ReadRequest> {
+    last: Option<Result<R, Error>>,
+}
+
+impl<R: ScalarRequest + ReadRequest> SubscribeFn for SubscribeScalar<R> {
+    type Request = Extended<R>;
+    type Output = R;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        self.last = Some(input.map(|req| {
+            debug_assert_eq!(req.len(), 1);
+            req.deref().clone()
+        }));
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.last.take()
+    }
+}
+
+pub struct SubscribeBuffered<T: Scalar> {
+    queue: VecDeque<Result<T, Error>>,
+}
+
+impl<T: Scalar> SubscribeFn for SubscribeBuffered<T> {
+    type Request = [T];
+    type Output = T;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        self.queue.push_back(input.map(|data| {
+            debug_assert_eq!(data.len(), 1);
+            data[0]
+        }));
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.queue.pop_front()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{Channel, Context};
-    use async_std::test as async_test;
+    use async_std::{task::sleep, test as async_test};
     use c_str_macro::c_str;
     use futures::{join, pin_mut, StreamExt};
     use serial_test::serial;
-    use std::f64::consts::PI;
+    use std::{f64::consts::PI, time::Duration};
 
     #[async_test]
     #[serial]
@@ -87,7 +136,7 @@ mod tests {
         let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
         output.connected().await;
         let mut output = output.into_typed::<f64>().unwrap().into_scalar().unwrap();
-        output.put(PI).await.unwrap();
+        output.put(PI).unwrap().await.unwrap();
 
         let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
         input.connected().await;
@@ -97,7 +146,7 @@ mod tests {
 
     #[async_test]
     #[serial]
-    async fn subscribe() {
+    async fn subscribe_buffered() {
         let ctx = Context::new().unwrap();
 
         let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
@@ -108,8 +157,8 @@ mod tests {
         input.connected().await;
         let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
 
-        output.put(0.0).await.unwrap();
-        let monitor = input.subscribe();
+        output.put(0.0).unwrap().await.unwrap();
+        let monitor = input.subscribe_buffered();
         pin_mut!(monitor);
         assert_eq!(monitor.next().await.unwrap().unwrap(), 0.0);
 
@@ -117,7 +166,7 @@ mod tests {
         join!(
             async {
                 for i in 0..count {
-                    output.put((i + 1) as f64 / 16.0).await.unwrap();
+                    output.put((i + 1) as f64 / 16.0).unwrap().await.unwrap();
                 }
             },
             async {
@@ -126,6 +175,7 @@ mod tests {
                         monitor.next().await.unwrap().unwrap(),
                         (i + 1) as f64 / 16.0
                     );
+                    sleep(Duration::from_millis(10)).await;
                 }
             }
         );

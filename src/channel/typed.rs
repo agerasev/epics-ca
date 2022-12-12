@@ -52,16 +52,16 @@ impl<T: Scalar> TypedChannel<T> {
 
 pub(crate) struct ProcessData {
     id_counter: usize,
-    pub(crate) result: Option<Result<(), Error>>,
-    pub(crate) state: *mut u8,
+    pub(crate) data: *mut u8,
+    pub(crate) put_res: Option<Result<(), Error>>,
 }
 
 impl ProcessData {
     pub fn new() -> Self {
         Self {
             id_counter: 0,
-            result: None,
-            state: ptr::null_mut(),
+            data: ptr::null_mut(),
+            put_res: None,
         }
     }
     pub fn id(&self) -> usize {

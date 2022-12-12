@@ -2,7 +2,7 @@ use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{
-        request::{ArrayRequest, ReadRequest},
+        request::{ReadRequest, Request},
         DbEvent, DbRequest, Scalar,
     },
 };
@@ -10,54 +10,38 @@ use futures::Stream;
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
-    marker::{PhantomData, PhantomPinned},
+    marker::PhantomPinned,
+    mem,
     pin::Pin,
     ptr,
     task::{Context, Poll},
 };
 
-struct SubscribeState<R, Q, F>
-where
-    R: ReadRequest + ?Sized,
-    Q: Send,
-    F: FnMut(&R) -> Q + Send,
-{
-    func: F,
-    output: Option<Q>,
-    _p: PhantomData<R>,
+pub trait SubscribeFn: Send {
+    type Request: ReadRequest + ?Sized;
+    type Output: Send + Sized;
+
+    fn push(&mut self, input: Result<&Self::Request, Error>);
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>>;
 }
 
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Subscribe<'a, R, Q, F>
-where
-    R: ReadRequest + ?Sized,
-    Q: Send,
-    F: FnMut(&R) -> Q + Send,
-{
+pub struct Subscribe<'a, F: SubscribeFn> {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
-    state: UnsafeCell<SubscribeState<R, Q, F>>,
+    state: UnsafeCell<F>,
     mask: DbEvent,
     evid: Option<sys::evid>,
     #[pin]
     _pp: PhantomPinned,
 }
 
-impl<'a, R, Q, F> Subscribe<'a, R, Q, F>
-where
-    R: ReadRequest + ?Sized,
-    Q: Send,
-    F: FnMut(&R) -> Q + Send,
-{
+impl<'a, F: SubscribeFn> Subscribe<'a, F> {
     fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
-            state: UnsafeCell::new(SubscribeState {
-                func,
-                output: None,
-                _p: PhantomData,
-            }),
+            state: UnsafeCell::new(func),
             mask: DbEvent::VALUE | DbEvent::ALARM,
             evid: None,
             _pp: PhantomPinned,
@@ -69,17 +53,16 @@ where
     }
 
     fn start(self: Pin<&mut Self>) -> Result<(), Error> {
-        println!("Start: {:p}", self);
         assert!(self.evid.is_none());
         let this = self.project();
         let owner = this.owner;
         owner.context().with(|| {
             let mut proc = owner.user_data().process.lock().unwrap();
-            proc.state = this.state.get() as *mut u8;
+            proc.data = this.state.get() as *mut u8;
             let mut evid: sys::evid = ptr::null_mut();
             result_from_raw(unsafe {
                 sys::ca_create_subscription(
-                    R::ENUM.raw() as _,
+                    F::Request::ENUM.raw() as _,
                     0,
                     owner.raw(),
                     this.mask.raw() as _,
@@ -90,7 +73,6 @@ where
             })
             .map(|()| {
                 owner.context().flush_io();
-                proc.result = None;
                 *this.evid = Some(evid);
             })
         })
@@ -99,48 +81,43 @@ where
     unsafe extern "C" fn callback(args: sys::event_handler_args) {
         println!("subscribe_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
-        let mut proc = user_data.process.lock().unwrap();
+        let proc = user_data.process.lock().unwrap();
         if proc.id() != args.usr as usize {
             return;
         }
         let result = result_from_raw(args.status);
-        let state = &mut *(proc.state as *mut SubscribeState<R, Q, F>);
-        if result.is_ok() {
-            debug_assert_eq!(R::ENUM, DbRequest::try_from_raw(args.type_ as _).unwrap());
-            debug_assert_ne!(args.count, 0);
-            let request = R::ref_from_ptr(args.dbr as *const u8, args.count as usize);
-            state.output = Some((state.func)(request));
-        }
-        proc.result = Some(result);
+        let func = &mut *(proc.data as *mut F);
+        match result {
+            Ok(()) => {
+                debug_assert_eq!(
+                    F::Request::ENUM,
+                    DbRequest::try_from_raw(args.type_ as _).unwrap()
+                );
+                debug_assert_ne!(args.count, 0);
+                let request = F::Request::ref_from_ptr(args.dbr as *const u8, args.count as usize);
+                func.push(Ok(request));
+            }
+            Err(err) => func.push(Err(err)),
+        };
         drop(proc);
         user_data.waker.wake();
     }
 }
 
-impl<'a, R, Q, F> Stream for Subscribe<'a, R, Q, F>
-where
-    R: ReadRequest + ?Sized,
-    Q: Send,
-    F: FnMut(&R) -> Q + Send,
-{
-    type Item = Result<Q, Error>;
+impl<'a, F: SubscribeFn> Stream for Subscribe<'a, F> {
+    type Item = Result<F::Output, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        println!("Poll next: {:p}", self);
         self.owner.user_data().waker.register(cx.waker());
         if self.evid.is_none() {
             self.start()?;
             return Poll::Pending;
         }
         let this = self.project();
-        let mut proc = this.owner.user_data().process.lock().unwrap();
-        let state = unsafe { &mut *this.state.get() };
-        let poll = match proc.result.take() {
-            Some(Ok(())) => {
-                let output = state.output.take().unwrap();
-                Poll::Ready(Some(Ok(output)))
-            }
-            Some(Err(err)) => Poll::Ready(Some(Err(err))),
+        let proc = this.owner.user_data().process.lock().unwrap();
+        let func = unsafe { &mut *this.state.get() };
+        let poll = match func.pop() {
+            Some(res) => Poll::Ready(Some(res)),
             None => Poll::Pending,
         };
         drop(proc);
@@ -149,18 +126,12 @@ where
 }
 
 #[pinned_drop]
-impl<'a, R, Q, F> PinnedDrop for Subscribe<'a, R, Q, F>
-where
-    R: ReadRequest + ?Sized,
-    Q: Send,
-    F: FnMut(&R) -> Q + Send,
-{
+impl<'a, F: SubscribeFn> PinnedDrop for Subscribe<'a, F> {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
         proc.change_id();
-        proc.state = ptr::null_mut();
-        proc.result = None;
+        proc.data = ptr::null_mut();
         if let Some(evid) = self.evid {
             self.owner.context().with(|| unsafe {
                 result_from_raw(sys::ca_clear_subscription(evid)).unwrap();
@@ -171,35 +142,45 @@ where
 }
 
 impl Channel {
-    pub fn subscribe_request_with<R, Q, F>(&mut self, func: F) -> Subscribe<'_, R, Q, F>
-    where
-        R: ReadRequest + ?Sized,
-        Q: Send,
-        F: FnMut(&R) -> Q + Send,
-    {
+    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F> {
         Subscribe::new(self, func)
     }
 }
 
 impl<T: Scalar> TypedChannel<T> {
-    pub fn subscribe_request_with<R, Q, F>(&mut self, func: F) -> Subscribe<'_, R, Q, F>
-    where
-        R: ArrayRequest<Type = T> + ReadRequest + ?Sized,
-        Q: Send,
-        F: FnMut(&R) -> Q + Send,
-    {
+    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F> {
         Subscribe::new(self, func)
     }
 
-    pub fn subscribe_with<Q, F>(&mut self, func: F) -> Subscribe<'_, [T], Q, F>
-    where
-        Q: Send,
-        F: FnMut(&[T]) -> Q + Send,
-    {
+    pub fn subscribe_with<F: SubscribeFn<Request = [T]>>(&mut self, func: F) -> Subscribe<'_, F> {
         self.subscribe_request_with(func)
     }
 
-    pub fn subscribe_vec(&mut self) -> impl Stream<Item = Result<Vec<T>, Error>> + '_ {
-        self.subscribe_with(|s: &[T]| Vec::from_iter(s.iter().cloned()))
+    pub fn subscribe_vec(&mut self) -> Subscribe<'_, SubscribeLastVec<T>> {
+        self.subscribe_with(SubscribeLastVec {
+            buffer: Vec::new(),
+            result: None,
+        })
+    }
+}
+
+pub struct SubscribeLastVec<T: Scalar> {
+    buffer: Vec<T>,
+    result: Option<Result<(), Error>>,
+}
+
+impl<T: Scalar> SubscribeFn for SubscribeLastVec<T> {
+    type Request = [T];
+    type Output = Vec<T>;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        self.result = Some(input.map(|src| {
+            self.buffer.clear();
+            self.buffer.extend_from_slice(src);
+        }));
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.result
+            .take()
+            .map(|res| res.map(|()| mem::take(&mut self.buffer)))
     }
 }
