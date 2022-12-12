@@ -53,6 +53,7 @@ impl<T: Scalar> TypedChannel<T> {
 pub(crate) struct ProcessData {
     id_counter: usize,
     pub(crate) data: *mut u8,
+    pub(crate) put_res: Option<Result<(), Error>>,
 }
 
 impl ProcessData {
@@ -60,6 +61,7 @@ impl ProcessData {
         Self {
             id_counter: 0,
             data: ptr::null_mut(),
+            put_res: None,
         }
     }
     pub fn id(&self) -> usize {

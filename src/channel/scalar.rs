@@ -45,9 +45,11 @@ impl<T: Scalar> ScalarChannel<T> {
         R: ScalarRequest<Type = T> + ReadRequest,
     {
         self.chan
-            .get_request_with(|request: &Extended<R>| {
-                debug_assert_eq!(request.len(), 1);
-                request.deref().clone()
+            .get_request_with(|res: Result<&Extended<R>, Error>| {
+                res.map(|req| {
+                    debug_assert_eq!(req.len(), 1);
+                    req.deref().clone()
+                })
             })
             .await
     }
@@ -60,22 +62,28 @@ impl<T: Scalar> ScalarChannel<T> {
     where
         R: ScalarRequest<Type = T> + ReadRequest,
     {
-        self.chan.subscribe_request_with(|request: &Extended<R>| {
-            debug_assert_eq!(request.len(), 1);
-            request.deref().clone()
-        })
+        self.chan
+            .subscribe_request_with(|res: Result<&Extended<R>, Error>| {
+                Some(res.map(|req| {
+                    debug_assert_eq!(req.len(), 1);
+                    req.deref().clone()
+                }))
+            })
     }
 
     pub fn subscribe(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
         self.subscribe_request::<T>()
     }
-
+    /*
     pub fn subscribe_buffered(&mut self) -> impl Stream<Item = Result<T, Error>> + '_ {
-        self.chan.subscribe_with(|data: &[T]| {
-            debug_assert_eq!(data.len(), 1);
-            data[0]
+        self.chan.subscribe_with(|res: Result<&[T], Error>| {
+            res.map(|data| {
+                debug_assert_eq!(data.len(), 1);
+                data[0]
+            })
         })
     }
+    */
 }
 
 #[pin_project]

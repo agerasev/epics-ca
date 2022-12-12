@@ -23,7 +23,7 @@ where
     F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
     func: F,
-    output: Option<Q>,
+    output: Option<Result<Q, Error>>,
     _p: PhantomData<R>,
 }
 
@@ -75,7 +75,7 @@ where
         let owner = this.owner;
         owner.context().with(|| {
             let mut proc = owner.user_data().process.lock().unwrap();
-            proc.state = this.state.get() as *mut u8;
+            proc.data = this.state.get() as *mut u8;
             let mut evid: sys::evid = ptr::null_mut();
             result_from_raw(unsafe {
                 sys::ca_create_subscription(
@@ -90,7 +90,6 @@ where
             })
             .map(|()| {
                 owner.context().flush_io();
-                proc.result = None;
                 *this.evid = Some(evid);
             })
         })
@@ -99,19 +98,21 @@ where
     unsafe extern "C" fn callback(args: sys::event_handler_args) {
         println!("subscribe_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
-        let mut proc = user_data.process.lock().unwrap();
+        let proc = user_data.process.lock().unwrap();
         if proc.id() != args.usr as usize {
             return;
         }
         let result = result_from_raw(args.status);
-        let state = &mut *(proc.state as *mut SubscribeState<R, Q, F>);
-        if result.is_ok() {
-            debug_assert_eq!(R::ENUM, DbRequest::try_from_raw(args.type_ as _).unwrap());
-            debug_assert_ne!(args.count, 0);
-            let request = R::ref_from_ptr(args.dbr as *const u8, args.count as usize);
-            state.output = Some((state.func)(request));
-        }
-        proc.result = Some(result);
+        let state = &mut *(proc.data as *mut SubscribeState<R, Q, F>);
+        state.output = match result {
+            Ok(()) => {
+                debug_assert_eq!(R::ENUM, DbRequest::try_from_raw(args.type_ as _).unwrap());
+                debug_assert_ne!(args.count, 0);
+                let request = R::ref_from_ptr(args.dbr as *const u8, args.count as usize);
+                (state.func)(Ok(request))
+            }
+            Err(err) => (state.func)(Err(err)),
+        };
         drop(proc);
         user_data.waker.wake();
     }
@@ -123,7 +124,7 @@ where
     Q: Send,
     F: FnMut(Result<&R, Error>) -> Option<Result<Q, Error>> + Send,
 {
-    type Item = Q;
+    type Item = Result<Q, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         println!("Poll next: {:p}", self);
@@ -133,14 +134,10 @@ where
             return Poll::Pending;
         }
         let this = self.project();
-        let mut proc = this.owner.user_data().process.lock().unwrap();
+        let proc = this.owner.user_data().process.lock().unwrap();
         let state = unsafe { &mut *this.state.get() };
-        let poll = match proc.result.take() {
-            Some(Ok(())) => {
-                let output = state.output.take().unwrap();
-                Poll::Ready(Some(Ok(output)))
-            }
-            Some(Err(err)) => Poll::Ready(Some(Err(err))),
+        let poll = match state.output.take() {
+            Some(res) => Poll::Ready(Some(res)),
             None => Poll::Pending,
         };
         drop(proc);
@@ -159,8 +156,7 @@ where
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
         proc.change_id();
-        proc.state = ptr::null_mut();
-        proc.result = None;
+        proc.data = ptr::null_mut();
         if let Some(evid) = self.evid {
             self.owner.context().with(|| unsafe {
                 result_from_raw(sys::ca_clear_subscription(evid)).unwrap();
@@ -194,14 +190,14 @@ impl<T: Scalar> TypedChannel<T> {
     pub fn subscribe_with<Q, F>(&mut self, func: F) -> Subscribe<'_, [T], Q, F>
     where
         Q: Send,
-        F: FnMut(Result<&[T], Error>) -> Q + Send,
+        F: FnMut(Result<&[T], Error>) -> Option<Result<Q, Error>> + Send,
     {
         self.subscribe_request_with(func)
     }
 
     pub fn subscribe_vec(&mut self) -> impl Stream<Item = Result<Vec<T>, Error>> + '_ {
         self.subscribe_with(|res: Result<&[T], Error>| {
-            res.map(|s| Vec::from_iter(s.iter().cloned()))
+            Some(res.map(|s| Vec::from_iter(s.iter().cloned())))
         })
     }
 }

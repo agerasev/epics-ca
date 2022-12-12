@@ -61,18 +61,20 @@ where
             let nord = self.nord.get_request::<Time<f64>>().await?;
             let result = self
                 .value
-                .get_request_with(|request: &Extended<Time<T>>| {
-                    println!(
-                        "nord: {}, timestamp: {:?}",
-                        nord.value(),
-                        nord.stamp.to_system()
-                    );
-                    if request.stamp == nord.stamp {
-                        let len = *nord.value() as usize;
-                        Some(func_cell.take().unwrap()(&request.values()[..len]))
-                    } else {
-                        None
-                    }
+                .get_request_with(|result: Result<&Extended<Time<T>>, Error>| {
+                    result.map(|request| {
+                        println!(
+                            "nord: {}, timestamp: {:?}",
+                            nord.value(),
+                            nord.stamp.to_system()
+                        );
+                        if request.stamp == nord.stamp {
+                            let len = *nord.value() as usize;
+                            Some(func_cell.take().unwrap()(&request.values()[..len]))
+                        } else {
+                            None
+                        }
+                    })
                 })
                 .await?;
             if let Some(ret) = result {
