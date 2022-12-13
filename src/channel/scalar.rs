@@ -2,7 +2,7 @@ use super::{Get, GetFn, Put, Subscribe, SubscribeFn, TypedChannel};
 use crate::{
     error::{self, Error},
     types::{
-        request::{ReadRequest, TypedRequest},
+        request::{Request, ScalarRequest},
         Field,
     },
 };
@@ -40,25 +40,25 @@ impl<T: Field> ScalarChannel<T> {
 
     pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
     where
-        R: TypedRequest<Field = T> + ReadRequest + ?Sized,
+        R: ScalarRequest<Field = T>,
     {
         self.chan.get_request_with(GetScalar { _p: PhantomData })
     }
 
     pub async fn get(&mut self) -> Result<T, Error> {
-        self.get_request::<[T]>().await
+        self.get_request::<T>().await
     }
 
     pub fn subscribe_request<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
     where
-        R: TypedRequest<Field = T> + ReadRequest + ?Sized,
+        R: ScalarRequest<Field = T>,
     {
         self.chan
             .subscribe_request_with(SubscribeScalar { last: None })
     }
 
-    pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<[T]>> {
-        self.subscribe_request::<[T]>()
+    pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<T>> {
+        self.subscribe_request::<T>()
     }
 
     pub fn subscribe_buffered(&mut self) -> Subscribe<'_, SubscribeBuffered<T>> {
@@ -68,32 +68,32 @@ impl<T: Field> ScalarChannel<T> {
     }
 }
 
-pub struct GetScalar<R: TypedRequest + ReadRequest + ?Sized> {
+pub struct GetScalar<R: ScalarRequest> {
     _p: PhantomData<R>,
 }
 
-impl<R: TypedRequest + ReadRequest + ?Sized> GetFn for GetScalar<R> {
-    type Request = R;
-    type Output = R::Scalar;
+impl<R: ScalarRequest> GetFn for GetScalar<R> {
+    type Request = R::Array;
+    type Output = R;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
         input.and_then(|req| {
             debug_assert_eq!(req.len(), 1);
-            req.to_scalar()
+            R::from_array(req)
         })
     }
 }
 
-pub struct SubscribeScalar<R: TypedRequest + ReadRequest + ?Sized> {
-    last: Option<Result<R::Scalar, Error>>,
+pub struct SubscribeScalar<R: ScalarRequest> {
+    last: Option<Result<R, Error>>,
 }
 
-impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeScalar<R> {
-    type Request = R;
-    type Output = R::Scalar;
+impl<R: ScalarRequest> SubscribeFn for SubscribeScalar<R> {
+    type Request = R::Array;
+    type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
         self.last = Some(input.and_then(|req| {
             debug_assert_eq!(req.len(), 1);
-            req.to_scalar()
+            R::from_array(req)
         }));
     }
     fn pop(&mut self) -> Option<Result<Self::Output, Error>> {

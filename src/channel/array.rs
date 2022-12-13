@@ -50,12 +50,12 @@ impl<T: Field> ArrayChannel<T> {
 
 impl<T: Field> ArrayChannel<T>
 where
-    Time<T>: Meta<T>,
+    Time: Meta<T>,
 {
     pub async fn get_with<F: GetFn<Request = [T]>>(&mut self, func: F) -> Result<F::Output, Error> {
         let mut state = GetState::Pending(func);
         loop {
-            let nord = self.nord.get_request::<Array<f64, Time<f64>>>().await?;
+            let nord = self.nord.get_request::<Scalar<f64, Time>>().await?;
             self.value
                 .get_request_with(GetArrayWith {
                     nord,
@@ -78,15 +78,15 @@ where
 }
 
 pub struct GetArrayWith<'a, T: Field, F: GetFn<Request = [T]>> {
-    nord: Scalar<f64, Time<f64>>,
+    nord: Scalar<f64, Time>,
     state: &'a mut GetState<F>,
 }
 
 impl<'a, T: Field, F: GetFn<Request = [T]>> GetFn for GetArrayWith<'a, T, F>
 where
-    Time<T>: Meta<T>,
+    Time: Meta<T>,
 {
-    type Request = Array<T, Time<T>>;
+    type Request = Array<T, Time>;
     type Output = ();
 
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {

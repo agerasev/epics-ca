@@ -8,21 +8,25 @@ use std::{
     ptr, slice,
 };
 
-pub trait TypedRequest: Request {
+pub trait TypedRequest: ReadRequest {
     type Field: Field;
-    type Scalar: Copy + Send + Sized + 'static;
 
     fn values(&self) -> &[Self::Field];
     fn values_mut(&mut self) -> &mut [Self::Field];
+}
+
+pub trait ScalarRequest: Copy + Send + Sized + 'static {
+    type Field: Field;
+    type Array: TypedRequest<Field = Self::Field> + ?Sized;
 
     /// # Safety
     ///
-    /// Request length must be equal to 1.
-    unsafe fn to_scalar_unchecked(&self) -> Self::Scalar;
+    /// Array length must be equal to 1.
+    unsafe fn from_array_unchecked(array: &Self::Array) -> Self;
 
-    fn to_scalar(&self) -> Result<Self::Scalar, Error> {
-        if self.len() == 1 {
-            Ok(unsafe { self.to_scalar_unchecked() })
+    fn from_array(array: &Self::Array) -> Result<Self, Error> {
+        if array.len() == 1 {
+            Ok(unsafe { Self::from_array_unchecked(array) })
         } else {
             Err(error::BADCOUNT)
         }
@@ -57,6 +61,23 @@ impl<T: Field, M: Meta<T>> Scalar<T, M> {
     }
 }
 
+impl<T: Field, M: Meta<T>> ScalarRequest for Scalar<T, M> {
+    type Field = T;
+    type Array = Array<T, M>;
+
+    unsafe fn from_array_unchecked(array: &Self::Array) -> Self {
+        array.scalar
+    }
+}
+impl<T: Field> ScalarRequest for T {
+    type Field = T;
+    type Array = [T];
+
+    unsafe fn from_array_unchecked(array: &Self::Array) -> Self {
+        *array.get_unchecked(0)
+    }
+}
+
 #[repr(C)]
 pub struct Array<T: Field, M: Meta<T>> {
     scalar: Scalar<T, M>,
@@ -88,17 +109,12 @@ unsafe impl<T: Field, M: Meta<T>> Request for Array<T, M> {
 }
 impl<T: Field, M: Meta<T>> TypedRequest for Array<T, M> {
     type Field = T;
-    type Scalar = Scalar<T, M>;
 
     fn values(&self) -> &[T] {
         unsafe { slice::from_raw_parts(self.scalar.value() as *const T, self.len()) }
     }
     fn values_mut(&mut self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.scalar.value_mut() as *mut T, self.len()) }
-    }
-
-    unsafe fn to_scalar_unchecked(&self) -> Self::Scalar {
-        self.scalar
     }
 }
 impl<T: Field, M: Meta<T>> ReadRequest for Array<T, M> {}
@@ -116,17 +132,12 @@ unsafe impl<T: Field> Request for [T] {
 }
 impl<T: Field> TypedRequest for [T] {
     type Field = T;
-    type Scalar = T;
 
     fn values(&self) -> &[T] {
         self
     }
     fn values_mut(&mut self) -> &mut [T] {
         self
-    }
-
-    unsafe fn to_scalar_unchecked(&self) -> Self::Scalar {
-        *self.get_unchecked(0)
     }
 }
 impl<T: Field> ReadRequest for [T] {}
