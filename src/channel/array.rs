@@ -2,7 +2,7 @@ use super::{GetFn, GetState, GetToSlice, GetVec, Put, ScalarChannel, TypedChanne
 use crate::{
     error::Error,
     types::{
-        request::{Array, Meta, Scalar, Time, TypedRequest},
+        request::{Array, Meta, Scalar, ScalarRequest, Time, TypedRequest},
         Field,
     },
 };

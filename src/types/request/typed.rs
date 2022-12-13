@@ -1,6 +1,6 @@
-use super::{Meta, ReadRequest, Request, WriteRequest};
+use super::{impl_scalar_request_methods, Meta, ReadRequest, Request, WriteRequest};
 use crate::{
-    error::{self, Error},
+    error::Error,
     types::{Field, RequestId},
 };
 use std::{
@@ -8,30 +8,28 @@ use std::{
     ptr, slice,
 };
 
-pub trait TypedRequest: ReadRequest {
+pub trait TypedRequest: Request {
     type Field: Field;
 
     fn values(&self) -> &[Self::Field];
     fn values_mut(&mut self) -> &mut [Self::Field];
 }
-
-pub trait ScalarRequest: Copy + Send + Sized + 'static {
-    type Field: Field;
-    type Array: TypedRequest<Field = Self::Field> + ?Sized;
-
-    /// # Safety
-    ///
-    /// Array length must be equal to 1.
-    unsafe fn from_array_unchecked(array: &Self::Array) -> Self;
-
-    fn from_array(array: &Self::Array) -> Result<Self, Error> {
-        if array.len() == 1 {
-            Ok(unsafe { Self::from_array_unchecked(array) })
-        } else {
-            Err(error::BADCOUNT)
-        }
-    }
+pub trait ScalarRequest: TypedRequest + Sized + Copy {
+    fn value(&self) -> &Self::Field;
+    fn value_mut(&mut self) -> &mut Self::Field;
 }
+macro_rules! impl_scalar_typed_request_methods {
+    () => {
+        fn values(&self) -> &[Self::Field] {
+            unsafe { &*(self.value() as *const _ as *const [Self::Field; 1]) }
+        }
+        fn values_mut(&mut self) -> &mut [Self::Field] {
+            unsafe { &mut *(self.value_mut() as *mut _ as *mut [Self::Field; 1]) }
+        }
+    };
+}
+
+// Scalar
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -52,31 +50,44 @@ impl<T: Field, M: Meta<T>> DerefMut for Scalar<T, M> {
     }
 }
 
-impl<T: Field, M: Meta<T>> Scalar<T, M> {
-    pub fn value(&self) -> &T {
+unsafe impl<T: Field, M: Meta<T>> Request for Scalar<T, M> {
+    type Raw = M::Raw;
+    const ENUM: RequestId = M::ENUM;
+    impl_scalar_request_methods!();
+}
+impl<T: Field, M: Meta<T>> TypedRequest for Scalar<T, M> {
+    type Field = T;
+    impl_scalar_typed_request_methods!();
+}
+impl<T: Field, M: Meta<T>> ScalarRequest for Scalar<T, M> {
+    fn value(&self) -> &T {
         unsafe { &*(((self as *const Self).offset(1) as *const T).offset(-1)) }
     }
-    pub fn value_mut(&mut self) -> &mut T {
+    fn value_mut(&mut self) -> &mut T {
         unsafe { &mut *(((self as *mut Self).offset(1) as *mut T).offset(-1)) }
     }
 }
+impl<T: Field, M: Meta<T>> ReadRequest for Scalar<T, M> {}
 
-impl<T: Field, M: Meta<T>> ScalarRequest for Scalar<T, M> {
+unsafe impl<T: Field> Request for T {
+    type Raw = T::Raw;
+    const ENUM: RequestId = RequestId::Base(T::ENUM);
+    impl_scalar_request_methods!();
+}
+impl<T: Field> TypedRequest for T {
     type Field = T;
-    type Array = Array<T, M>;
-
-    unsafe fn from_array_unchecked(array: &Self::Array) -> Self {
-        array.scalar
-    }
+    impl_scalar_typed_request_methods!();
 }
 impl<T: Field> ScalarRequest for T {
-    type Field = T;
-    type Array = [T];
-
-    unsafe fn from_array_unchecked(array: &Self::Array) -> Self {
-        *array.get_unchecked(0)
+    fn value(&self) -> &T {
+        self
+    }
+    fn value_mut(&mut self) -> &mut T {
+        self
     }
 }
+impl<T: Field> ReadRequest for T {}
+impl<T: Field> WriteRequest for T {}
 
 #[repr(C)]
 pub struct Array<T: Field, M: Meta<T>> {
@@ -103,8 +114,8 @@ unsafe impl<T: Field, M: Meta<T>> Request for Array<T, M> {
     fn len(&self) -> usize {
         self.extent.len() + 1
     }
-    unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self {
-        &*(ptr::slice_from_raw_parts(ptr, count - 1) as *const Self)
+    unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error> {
+        Ok(&*(ptr::slice_from_raw_parts(ptr, count - 1) as *const Self))
     }
 }
 impl<T: Field, M: Meta<T>> TypedRequest for Array<T, M> {
@@ -126,8 +137,8 @@ unsafe impl<T: Field> Request for [T] {
     fn len(&self) -> usize {
         self.len()
     }
-    unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self {
-        &*(ptr::slice_from_raw_parts(ptr, count) as *const Self)
+    unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error> {
+        Ok(&*(ptr::slice_from_raw_parts(ptr, count) as *const Self))
     }
 }
 impl<T: Field> TypedRequest for [T] {

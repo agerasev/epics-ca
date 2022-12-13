@@ -82,24 +82,19 @@ impl<'a, F: GetFn> Get<'a, F> {
         if proc.id() != args.usr as usize {
             return;
         }
-        let result = result_from_raw(args.status);
         let state = &mut *(proc.data as *mut GetState<F>);
         let func = match mem::replace(state, GetState::Empty) {
             GetState::Pending(func) => func,
             _ => unreachable!(),
         };
-        *state = GetState::Ready(match result {
-            Ok(()) => {
-                debug_assert_eq!(
-                    F::Request::ENUM,
-                    RequestId::try_from_raw(args.type_ as _).unwrap()
-                );
-                debug_assert_ne!(args.count, 0);
-                let request = F::Request::ref_from_ptr(args.dbr as *const u8, args.count as usize);
-                func.apply(Ok(request))
-            }
-            Err(err) => func.apply(Err(err)),
-        });
+        *state = GetState::Ready(func.apply(result_from_raw(args.status).and_then(|()| {
+            debug_assert_eq!(
+                F::Request::ENUM,
+                RequestId::try_from_raw(args.type_ as _).unwrap()
+            );
+            debug_assert_ne!(args.count, 0);
+            F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
+        })));
         user_data.waker.wake();
     }
 }

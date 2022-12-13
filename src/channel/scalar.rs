@@ -2,7 +2,7 @@ use super::{Get, GetFn, Put, Subscribe, SubscribeFn, TypedChannel};
 use crate::{
     error::{self, Error},
     types::{
-        request::{Request, ScalarRequest},
+        request::{ReadRequest, ScalarRequest},
         Field,
     },
 };
@@ -40,7 +40,7 @@ impl<T: Field> ScalarChannel<T> {
 
     pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
     where
-        R: ScalarRequest<Field = T>,
+        R: ScalarRequest<Field = T> + ReadRequest,
     {
         self.chan.get_request_with(GetScalar { _p: PhantomData })
     }
@@ -51,7 +51,7 @@ impl<T: Field> ScalarChannel<T> {
 
     pub fn subscribe_request<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
     where
-        R: ScalarRequest<Field = T>,
+        R: ScalarRequest<Field = T> + ReadRequest,
     {
         self.chan
             .subscribe_request_with(SubscribeScalar { last: None })
@@ -68,33 +68,27 @@ impl<T: Field> ScalarChannel<T> {
     }
 }
 
-pub struct GetScalar<R: ScalarRequest> {
+pub struct GetScalar<R: ScalarRequest + ReadRequest> {
     _p: PhantomData<R>,
 }
 
-impl<R: ScalarRequest> GetFn for GetScalar<R> {
-    type Request = R::Array;
+impl<R: ScalarRequest + ReadRequest> GetFn for GetScalar<R> {
+    type Request = R;
     type Output = R;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
-        input.and_then(|req| {
-            debug_assert_eq!(req.len(), 1);
-            R::from_array(req)
-        })
+        input.cloned()
     }
 }
 
-pub struct SubscribeScalar<R: ScalarRequest> {
+pub struct SubscribeScalar<R: ScalarRequest + ReadRequest> {
     last: Option<Result<R, Error>>,
 }
 
-impl<R: ScalarRequest> SubscribeFn for SubscribeScalar<R> {
-    type Request = R::Array;
+impl<R: ScalarRequest + ReadRequest> SubscribeFn for SubscribeScalar<R> {
+    type Request = R;
     type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.last = Some(input.and_then(|req| {
-            debug_assert_eq!(req.len(), 1);
-            R::from_array(req)
-        }));
+        self.last = Some(input.cloned());
     }
     fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
         self.last.take()

@@ -85,20 +85,15 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
         if proc.id() != args.usr as usize {
             return;
         }
-        let result = result_from_raw(args.status);
         let func = &mut *(proc.data as *mut F);
-        match result {
-            Ok(()) => {
-                debug_assert_eq!(
-                    F::Request::ENUM,
-                    RequestId::try_from_raw(args.type_ as _).unwrap()
-                );
-                debug_assert_ne!(args.count, 0);
-                let request = F::Request::ref_from_ptr(args.dbr as *const u8, args.count as usize);
-                func.push(Ok(request));
-            }
-            Err(err) => func.push(Err(err)),
-        };
+        func.push(result_from_raw(args.status).and_then(|()| {
+            debug_assert_eq!(
+                F::Request::ENUM,
+                RequestId::try_from_raw(args.type_ as _).unwrap()
+            );
+            debug_assert_ne!(args.count, 0);
+            F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
+        }));
         drop(proc);
         user_data.waker.wake();
     }

@@ -1,4 +1,7 @@
-use crate::types::{EpicsString, RequestId};
+use crate::{
+    types::{EpicsString, RequestId},
+    Error,
+};
 
 /// # Safety
 ///
@@ -14,7 +17,7 @@ pub unsafe trait Request: Send + 'static {
     /// # Safety
     ///
     /// Pointer must be valid and point to raw request structure.
-    unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self;
+    unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error>;
 }
 
 macro_rules! impl_scalar_request_methods {
@@ -22,12 +25,16 @@ macro_rules! impl_scalar_request_methods {
         fn len(&self) -> usize {
             1
         }
-        unsafe fn ref_from_ptr<'a>(ptr: *const u8, count: usize) -> &'a Self {
-            debug_assert_eq!(count, 1);
-            &*(ptr as *const Self)
+        unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, crate::Error> {
+            if count == 1 {
+                Ok(&*(ptr as *const Self))
+            } else {
+                Err(crate::error::BADCOUNT)
+            }
         }
     };
 }
+pub(crate) use impl_scalar_request_methods;
 
 pub trait WriteRequest: Request {}
 pub trait ReadRequest: Request {}
