@@ -3,7 +3,7 @@ use crate::{
     error::{result_from_raw, Error},
     types::{
         request::{ReadRequest, Request, TypedRequest},
-        DbRequest, Scalar,
+        Field, RequestId,
     },
 };
 use derive_more::From;
@@ -92,7 +92,7 @@ impl<'a, F: GetFn> Get<'a, F> {
             Ok(()) => {
                 debug_assert_eq!(
                     F::Request::ENUM,
-                    DbRequest::try_from_raw(args.type_ as _).unwrap()
+                    RequestId::try_from_raw(args.type_ as _).unwrap()
                 );
                 debug_assert_ne!(args.count, 0);
                 let request = F::Request::ref_from_ptr(args.dbr as *const u8, args.count as usize);
@@ -147,7 +147,7 @@ impl Channel {
     }
 }
 
-impl<T: Scalar> TypedChannel<T> {
+impl<T: Field> TypedChannel<T> {
     pub fn get_request_with<R, F>(&mut self, func: F) -> Get<'_, F>
     where
         R: TypedRequest<Field = T> + ReadRequest + ?Sized,
@@ -170,11 +170,11 @@ impl<T: Scalar> TypedChannel<T> {
 }
 
 #[derive(From)]
-pub struct GetToSlice<'a, T: Scalar> {
+pub struct GetToSlice<'a, T: Field> {
     dst: &'a mut [T],
 }
 
-impl<'a, T: Scalar> GetFn for GetToSlice<'a, T> {
+impl<'a, T: Field> GetFn for GetToSlice<'a, T> {
     type Request = [T];
     type Output = usize;
     fn apply(self, input: Result<&[T], Error>) -> Result<Self::Output, Error> {
@@ -186,17 +186,17 @@ impl<'a, T: Scalar> GetFn for GetToSlice<'a, T> {
     }
 }
 
-pub struct GetVec<T: Scalar> {
+pub struct GetVec<T: Field> {
     _p: PhantomData<T>,
 }
 
-impl<T: Scalar> Default for GetVec<T> {
+impl<T: Field> Default for GetVec<T> {
     fn default() -> Self {
         Self { _p: PhantomData }
     }
 }
 
-impl<T: Scalar> GetFn for GetVec<T> {
+impl<T: Field> GetFn for GetVec<T> {
     type Request = [T];
     type Output = Vec<T>;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {

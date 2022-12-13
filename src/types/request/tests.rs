@@ -25,44 +25,44 @@ fn value() {
 
 #[test]
 fn sts() {
-    assert_layout_typed::<Extended<u8, Sts<u8>>>();
-    assert_layout_typed::<Extended<i16, Sts<i16>>>();
-    assert_layout_typed::<Extended<EpicsEnum, Sts<EpicsEnum>>>();
-    assert_layout_typed::<Extended<i32, Sts<i32>>>();
-    assert_layout_typed::<Extended<f32, Sts<f32>>>();
-    assert_layout_typed::<Extended<f64, Sts<f64>>>();
-    assert_layout_typed::<Extended<EpicsString, Sts<EpicsString>>>();
+    assert_layout_typed::<Array<u8, Sts<u8>>>();
+    assert_layout_typed::<Array<i16, Sts<i16>>>();
+    assert_layout_typed::<Array<EpicsEnum, Sts<EpicsEnum>>>();
+    assert_layout_typed::<Array<i32, Sts<i32>>>();
+    assert_layout_typed::<Array<f32, Sts<f32>>>();
+    assert_layout_typed::<Array<f64, Sts<f64>>>();
+    assert_layout_typed::<Array<EpicsString, Sts<EpicsString>>>();
 }
 
 #[test]
 fn time() {
-    assert_layout_typed::<Extended<u8, Time<u8>>>();
-    assert_layout_typed::<Extended<i16, Time<i16>>>();
-    assert_layout_typed::<Extended<EpicsEnum, Time<EpicsEnum>>>();
-    assert_layout_typed::<Extended<i32, Time<i32>>>();
-    assert_layout_typed::<Extended<f32, Time<f32>>>();
-    assert_layout_typed::<Extended<f64, Time<f64>>>();
-    assert_layout_typed::<Extended<EpicsString, Time<EpicsString>>>();
+    assert_layout_typed::<Array<u8, Time<u8>>>();
+    assert_layout_typed::<Array<i16, Time<i16>>>();
+    assert_layout_typed::<Array<EpicsEnum, Time<EpicsEnum>>>();
+    assert_layout_typed::<Array<i32, Time<i32>>>();
+    assert_layout_typed::<Array<f32, Time<f32>>>();
+    assert_layout_typed::<Array<f64, Time<f64>>>();
+    assert_layout_typed::<Array<EpicsString, Time<EpicsString>>>();
 }
 
 #[test]
 fn gr() {
-    assert_layout_typed::<Extended<u8, GrInt<u8>>>();
-    assert_layout_typed::<Extended<i16, GrInt<i16>>>();
-    assert_layout_typed::<Extended<EpicsEnum, GrEnum>>();
-    assert_layout_typed::<Extended<i32, GrInt<i32>>>();
-    assert_layout_typed::<Extended<f32, GrFloat<f32>>>();
-    assert_layout_typed::<Extended<f64, GrFloat<f64>>>();
+    assert_layout_typed::<Array<u8, GrInt<u8>>>();
+    assert_layout_typed::<Array<i16, GrInt<i16>>>();
+    assert_layout_typed::<Array<EpicsEnum, GrEnum>>();
+    assert_layout_typed::<Array<i32, GrInt<i32>>>();
+    assert_layout_typed::<Array<f32, GrFloat<f32>>>();
+    assert_layout_typed::<Array<f64, GrFloat<f64>>>();
 }
 
 #[test]
 fn ctrl() {
-    assert_layout_typed::<Extended<u8, CtrlInt<u8>>>();
-    assert_layout_typed::<Extended<i16, CtrlInt<i16>>>();
-    assert_layout_typed::<Extended<EpicsEnum, CtrlEnum>>();
-    assert_layout_typed::<Extended<i32, CtrlInt<i32>>>();
-    assert_layout_typed::<Extended<f32, CtrlFloat<f32>>>();
-    assert_layout_typed::<Extended<f64, CtrlFloat<f64>>>();
+    assert_layout_typed::<Array<u8, CtrlInt<u8>>>();
+    assert_layout_typed::<Array<i16, CtrlInt<i16>>>();
+    assert_layout_typed::<Array<EpicsEnum, CtrlEnum>>();
+    assert_layout_typed::<Array<i32, CtrlInt<i32>>>();
+    assert_layout_typed::<Array<f32, CtrlFloat<f32>>>();
+    assert_layout_typed::<Array<f64, CtrlFloat<f64>>>();
 }
 
 #[test]

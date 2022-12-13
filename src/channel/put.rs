@@ -1,7 +1,7 @@
 use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
-    types::{request::WriteRequest, Scalar},
+    types::{request::WriteRequest, Field},
 };
 use std::{
     future::Future,
@@ -71,7 +71,7 @@ impl<'a> Drop for Put<'a> {
     }
 }
 
-impl<T: Scalar> TypedChannel<T> {
+impl<T: Field> TypedChannel<T> {
     pub fn put_slice(&mut self, data: &[T]) -> Result<Put<'_>, Error> {
         self.put_request(data)
     }

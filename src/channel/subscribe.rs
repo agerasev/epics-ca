@@ -3,7 +3,7 @@ use crate::{
     error::{result_from_raw, Error},
     types::{
         request::{ReadRequest, Request},
-        DbEvent, DbRequest, Scalar,
+        EventMask, Field, RequestId,
     },
 };
 use futures::Stream;
@@ -31,7 +31,7 @@ pub struct Subscribe<'a, F: SubscribeFn> {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
     state: UnsafeCell<F>,
-    mask: DbEvent,
+    mask: EventMask,
     evid: Option<sys::evid>,
     #[pin]
     _pp: PhantomPinned,
@@ -42,13 +42,13 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
         Self {
             owner,
             state: UnsafeCell::new(func),
-            mask: DbEvent::VALUE | DbEvent::ALARM,
+            mask: EventMask::VALUE | EventMask::ALARM,
             evid: None,
             _pp: PhantomPinned,
         }
     }
 
-    pub fn set_event_mask(&mut self, mask: DbEvent) {
+    pub fn set_event_mask(&mut self, mask: EventMask) {
         self.mask = mask;
     }
 
@@ -91,7 +91,7 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
             Ok(()) => {
                 debug_assert_eq!(
                     F::Request::ENUM,
-                    DbRequest::try_from_raw(args.type_ as _).unwrap()
+                    RequestId::try_from_raw(args.type_ as _).unwrap()
                 );
                 debug_assert_ne!(args.count, 0);
                 let request = F::Request::ref_from_ptr(args.dbr as *const u8, args.count as usize);
@@ -147,7 +147,7 @@ impl Channel {
     }
 }
 
-impl<T: Scalar> TypedChannel<T> {
+impl<T: Field> TypedChannel<T> {
     pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F> {
         Subscribe::new(self, func)
     }
@@ -164,12 +164,12 @@ impl<T: Scalar> TypedChannel<T> {
     }
 }
 
-pub struct SubscribeLastVec<T: Scalar> {
+pub struct SubscribeLastVec<T: Field> {
     buffer: Vec<T>,
     result: Option<Result<(), Error>>,
 }
 
-impl<T: Scalar> SubscribeFn for SubscribeLastVec<T> {
+impl<T: Field> SubscribeFn for SubscribeLastVec<T> {
     type Request = [T];
     type Output = Vec<T>;
     fn push(&mut self, input: Result<&Self::Request, Error>) {

@@ -2,25 +2,25 @@ use super::{GetFn, GetState, GetToSlice, GetVec, Put, ScalarChannel, TypedChanne
 use crate::{
     error::Error,
     types::{
-        request::{Extended, Meta, MetaValue, Time, TypedRequest},
-        Scalar,
+        request::{Array, Meta, Scalar, Time, TypedRequest},
+        Field,
     },
 };
 use std::{ffi::CString, mem};
 
-impl<T: Scalar> TypedChannel<T> {
+impl<T: Field> TypedChannel<T> {
     pub async fn into_array(self) -> Result<ArrayChannel<T>, Error> {
         ArrayChannel::new(self).await
     }
 }
 
 #[derive(Debug)]
-pub struct ArrayChannel<T: Scalar> {
+pub struct ArrayChannel<T: Field> {
     value: TypedChannel<T>,
     nord: ScalarChannel<f64>,
 }
 
-impl<T: Scalar> ArrayChannel<T> {
+impl<T: Field> ArrayChannel<T> {
     pub async fn new(chan: TypedChannel<T>) -> Result<Self, Error> {
         let name = CString::from_vec_with_nul(
             chan.name()
@@ -48,14 +48,14 @@ impl<T: Scalar> ArrayChannel<T> {
     }
 }
 
-impl<T: Scalar> ArrayChannel<T>
+impl<T: Field> ArrayChannel<T>
 where
     Time<T>: Meta<T>,
 {
     pub async fn get_with<F: GetFn<Request = [T]>>(&mut self, func: F) -> Result<F::Output, Error> {
         let mut state = GetState::Pending(func);
         loop {
-            let nord = self.nord.get_request::<Extended<f64, Time<f64>>>().await?;
+            let nord = self.nord.get_request::<Array<f64, Time<f64>>>().await?;
             self.value
                 .get_request_with(GetArrayWith {
                     nord,
@@ -77,16 +77,16 @@ where
     }
 }
 
-pub struct GetArrayWith<'a, T: Scalar, F: GetFn<Request = [T]>> {
-    nord: MetaValue<f64, Time<f64>>,
+pub struct GetArrayWith<'a, T: Field, F: GetFn<Request = [T]>> {
+    nord: Scalar<f64, Time<f64>>,
     state: &'a mut GetState<F>,
 }
 
-impl<'a, T: Scalar, F: GetFn<Request = [T]>> GetFn for GetArrayWith<'a, T, F>
+impl<'a, T: Field, F: GetFn<Request = [T]>> GetFn for GetArrayWith<'a, T, F>
 where
     Time<T>: Meta<T>,
 {
-    type Request = Extended<T, Time<T>>;
+    type Request = Array<T, Time<T>>;
     type Output = ();
 
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {

@@ -3,13 +3,13 @@ use crate::{
     error::{self, Error},
     types::{
         request::{ReadRequest, TypedRequest},
-        Scalar,
+        Field,
     },
 };
 use derive_more::{Deref, DerefMut, Into};
 use std::{collections::VecDeque, marker::PhantomData};
 
-impl<T: Scalar> TypedChannel<T> {
+impl<T: Field> TypedChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
         let count = match self.element_count() {
             Ok(n) => n,
@@ -25,11 +25,11 @@ impl<T: Scalar> TypedChannel<T> {
 
 #[repr(transparent)]
 #[derive(Debug, Deref, DerefMut, Into)]
-pub struct ScalarChannel<T: Scalar> {
+pub struct ScalarChannel<T: Field> {
     chan: TypedChannel<T>,
 }
 
-impl<T: Scalar> ScalarChannel<T> {
+impl<T: Field> ScalarChannel<T> {
     pub fn new_unchecked(chan: TypedChannel<T>) -> Self {
         Self { chan }
     }
@@ -101,11 +101,11 @@ impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeScalar<R> 
     }
 }
 
-pub struct SubscribeBuffered<T: Scalar> {
+pub struct SubscribeBuffered<T: Field> {
     queue: VecDeque<Result<T, Error>>,
 }
 
-impl<T: Scalar> SubscribeFn for SubscribeBuffered<T> {
+impl<T: Field> SubscribeFn for SubscribeBuffered<T> {
     type Request = [T];
     type Output = T;
     fn push(&mut self, input: Result<&Self::Request, Error>) {

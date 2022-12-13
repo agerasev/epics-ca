@@ -2,7 +2,7 @@ use super::ProcessData;
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
-    types::DbField,
+    types::FieldId,
     utils::Ptr,
 };
 use futures::{future::FusedFuture, task::AtomicWaker};
@@ -75,12 +75,12 @@ impl Channel {
     pub fn name(&self) -> &CStr {
         unsafe { CStr::from_ptr(sys::ca_name(self.raw())) }
     }
-    pub fn field_type(&self) -> Result<DbField, Error> {
+    pub fn field_type(&self) -> Result<FieldId, Error> {
         let raw = unsafe { sys::ca_field_type(self.raw()) } as i32;
         if raw == sys::TYPENOTCONN {
             return Err(error::DISCONN);
         }
-        DbField::try_from_raw(raw).ok_or(error::BADTYPE)
+        FieldId::try_from_raw(raw).ok_or(error::BADTYPE)
     }
     pub fn element_count(&self) -> Result<usize, Error> {
         let count = unsafe { sys::ca_element_count(self.raw()) } as usize;

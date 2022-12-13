@@ -1,4 +1,4 @@
-use crate::types::{DbRequest, EpicsString};
+use crate::types::{EpicsString, RequestId};
 
 /// # Safety
 ///
@@ -8,7 +8,7 @@ use crate::types::{DbRequest, EpicsString};
 #[allow(clippy::len_without_is_empty)]
 pub unsafe trait Request: Send + 'static {
     type Raw;
-    const ENUM: DbRequest;
+    const ENUM: RequestId;
 
     fn len(&self) -> usize;
     /// # Safety
@@ -38,7 +38,7 @@ pub struct PutAckt(pub u16);
 
 unsafe impl Request for PutAckt {
     type Raw = sys::dbr_put_ackt_t;
-    const ENUM: DbRequest = DbRequest::PutAckt;
+    const ENUM: RequestId = RequestId::PutAckt;
     impl_scalar_request_methods!();
 }
 impl WriteRequest for PutAckt {}
@@ -49,7 +49,7 @@ pub struct PutAcks(pub u16);
 
 unsafe impl Request for PutAcks {
     type Raw = sys::dbr_put_acks_t;
-    const ENUM: DbRequest = DbRequest::PutAcks;
+    const ENUM: RequestId = RequestId::PutAcks;
     impl_scalar_request_methods!();
 }
 impl WriteRequest for PutAcks {}
@@ -60,7 +60,7 @@ pub struct StsackString(pub EpicsString);
 
 unsafe impl Request for StsackString {
     type Raw = sys::dbr_stsack_string_t;
-    const ENUM: DbRequest = DbRequest::PutAcks;
+    const ENUM: RequestId = RequestId::PutAcks;
     impl_scalar_request_methods!();
 }
 impl ReadRequest for StsackString {}
@@ -71,7 +71,7 @@ pub struct ClassName(pub EpicsString);
 
 unsafe impl Request for ClassName {
     type Raw = sys::dbr_class_name_t;
-    const ENUM: DbRequest = DbRequest::ClassName;
+    const ENUM: RequestId = RequestId::ClassName;
     impl_scalar_request_methods!();
 }
 impl ReadRequest for ClassName {}

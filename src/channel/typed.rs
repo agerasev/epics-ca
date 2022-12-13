@@ -1,7 +1,7 @@
 use super::Channel;
 use crate::{
     error::{self, Error},
-    types::Scalar,
+    types::Field,
 };
 use derive_more::{Deref, DerefMut, Into};
 use std::{
@@ -12,7 +12,7 @@ use std::{
 };
 
 impl Channel {
-    pub fn into_typed<T: Scalar>(self) -> Result<TypedChannel<T>, (Error, Self)> {
+    pub fn into_typed<T: Field>(self) -> Result<TypedChannel<T>, (Error, Self)> {
         let dbf = match self.field_type() {
             Ok(dbf) => dbf,
             Err(err) => return Err((err, self)),
@@ -28,7 +28,7 @@ impl Channel {
 /// Typed channel.
 #[repr(transparent)]
 #[derive(Deref, DerefMut, Into)]
-pub struct TypedChannel<T: Scalar> {
+pub struct TypedChannel<T: Field> {
     #[deref]
     #[deref_mut]
     pub(crate) base: Channel,
@@ -36,7 +36,7 @@ pub struct TypedChannel<T: Scalar> {
     _p: PhantomData<T>,
 }
 
-impl<T: Scalar> TypedChannel<T> {
+impl<T: Field> TypedChannel<T> {
     /// Convert [`AnyChannel`] to [`Channel<T>`] without type checking.
     ///
     /// It is safe because the type of remote channel can change at any moment and checks are done reading/writing/monitoring anyway.
@@ -72,7 +72,7 @@ impl ProcessData {
     }
 }
 
-impl<T: Scalar> Debug for TypedChannel<T> {
+impl<T: Field> Debug for TypedChannel<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Channel<{}>({:?})", type_name::<T>(), self.raw())
     }

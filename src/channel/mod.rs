@@ -14,7 +14,7 @@ pub use scalar::*;
 pub use subscribe::*;
 pub use typed::*;
 
-use crate::{context::Context, error::Error, types::Scalar};
+use crate::{context::Context, error::Error, types::Field};
 use std::{ffi::CStr, sync::Arc};
 
 impl Context {
@@ -26,7 +26,7 @@ impl Context {
     }
 
     /// Create channel, wait for connection, and try to cast it to typed one.
-    pub async fn connect_typed<T: Scalar>(
+    pub async fn connect_typed<T: Field>(
         self: Arc<Context>,
         name: &CStr,
     ) -> Result<TypedChannel<T>, Error> {
