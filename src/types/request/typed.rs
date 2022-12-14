@@ -10,23 +10,17 @@ use std::{
 
 pub trait TypedRequest: Request {
     type Field: Field;
+    type Meta: Meta<Self::Field>;
 
     fn values(&self) -> &[Self::Field];
     fn values_mut(&mut self) -> &mut [Self::Field];
+
+    fn meta(&self) -> &Self::Meta;
+    fn meta_mut(&mut self) -> &mut Self::Meta;
 }
 pub trait ScalarRequest: TypedRequest + Sized + Copy {
     fn value(&self) -> &Self::Field;
     fn value_mut(&mut self) -> &mut Self::Field;
-}
-macro_rules! impl_scalar_typed_request_methods {
-    () => {
-        fn values(&self) -> &[Self::Field] {
-            unsafe { &*(self.value() as *const _ as *const [Self::Field; 1]) }
-        }
-        fn values_mut(&mut self) -> &mut [Self::Field] {
-            unsafe { &mut *(self.value_mut() as *mut _ as *mut [Self::Field; 1]) }
-        }
-    };
 }
 
 // Scalar
@@ -57,7 +51,21 @@ unsafe impl<T: Field, M: Meta<T>> Request for Scalar<T, M> {
 }
 impl<T: Field, M: Meta<T>> TypedRequest for Scalar<T, M> {
     type Field = T;
-    impl_scalar_typed_request_methods!();
+    type Meta = M;
+
+    fn values(&self) -> &[Self::Field] {
+        unsafe { &*(self.value() as *const _ as *const [Self::Field; 1]) }
+    }
+    fn values_mut(&mut self) -> &mut [Self::Field] {
+        unsafe { &mut *(self.value_mut() as *mut _ as *mut [Self::Field; 1]) }
+    }
+
+    fn meta(&self) -> &Self::Meta {
+        self
+    }
+    fn meta_mut(&mut self) -> &mut Self::Meta {
+        self
+    }
 }
 impl<T: Field, M: Meta<T>> ScalarRequest for Scalar<T, M> {
     fn value(&self) -> &T {
@@ -76,7 +84,21 @@ unsafe impl<T: Field> Request for T {
 }
 impl<T: Field> TypedRequest for T {
     type Field = T;
-    impl_scalar_typed_request_methods!();
+    type Meta = ();
+
+    fn values(&self) -> &[Self::Field] {
+        unsafe { &*(self as *const _ as *const [Self::Field; 1]) }
+    }
+    fn values_mut(&mut self) -> &mut [Self::Field] {
+        unsafe { &mut *(self as *mut _ as *mut [Self::Field; 1]) }
+    }
+
+    fn meta(&self) -> &Self::Meta {
+        unsafe { &*(self as *const _ as *const ()) }
+    }
+    fn meta_mut(&mut self) -> &mut Self::Meta {
+        unsafe { &mut *(self as *mut _ as *mut ()) }
+    }
 }
 impl<T: Field> ScalarRequest for T {
     fn value(&self) -> &T {
@@ -120,12 +142,20 @@ unsafe impl<T: Field, M: Meta<T>> Request for Array<T, M> {
 }
 impl<T: Field, M: Meta<T>> TypedRequest for Array<T, M> {
     type Field = T;
+    type Meta = M;
 
     fn values(&self) -> &[T] {
         unsafe { slice::from_raw_parts(self.scalar.value() as *const T, self.len()) }
     }
     fn values_mut(&mut self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.scalar.value_mut() as *mut T, self.len()) }
+    }
+
+    fn meta(&self) -> &Self::Meta {
+        self
+    }
+    fn meta_mut(&mut self) -> &mut Self::Meta {
+        self
     }
 }
 impl<T: Field, M: Meta<T>> ReadRequest for Array<T, M> {}
@@ -143,12 +173,20 @@ unsafe impl<T: Field> Request for [T] {
 }
 impl<T: Field> TypedRequest for [T] {
     type Field = T;
+    type Meta = ();
 
     fn values(&self) -> &[T] {
         self
     }
     fn values_mut(&mut self) -> &mut [T] {
         self
+    }
+
+    fn meta(&self) -> &Self::Meta {
+        unsafe { &*(self as *const _ as *const ()) }
+    }
+    fn meta_mut(&mut self) -> &mut Self::Meta {
+        unsafe { &mut *(self as *mut _ as *mut ()) }
     }
 }
 impl<T: Field> ReadRequest for [T] {}

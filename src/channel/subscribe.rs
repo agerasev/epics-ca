@@ -2,11 +2,11 @@ use super::{Channel, TypedChannel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{
-        request::{ReadRequest, Request},
+        request::{ReadRequest, Request, TypedRequest},
         EventMask, Field, RequestId,
     },
 };
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
@@ -151,31 +151,39 @@ impl<T: Field> TypedChannel<T> {
         self.subscribe_request_with(func)
     }
 
-    pub fn subscribe_vec(&mut self) -> Subscribe<'_, SubscribeLastVec<T>> {
-        self.subscribe_with(SubscribeLastVec {
+    pub fn subscribe_request_vec<R>(&mut self) -> Subscribe<'_, SubscribeLastVec<R>>
+    where
+        R: TypedRequest<Field = T> + ReadRequest + ?Sized,
+    {
+        self.subscribe_request_with(SubscribeLastVec {
             buffer: Vec::new(),
             result: None,
         })
     }
+
+    pub fn subscribe_vec(&mut self) -> impl Stream<Item = Result<Vec<T>, Error>> + '_ {
+        self.subscribe_request_vec::<[T]>().map(|r| r.map(|x| x.1))
+    }
 }
 
-pub struct SubscribeLastVec<T: Field> {
-    buffer: Vec<T>,
-    result: Option<Result<(), Error>>,
+pub struct SubscribeLastVec<R: TypedRequest + ReadRequest + ?Sized> {
+    buffer: Vec<R::Field>,
+    result: Option<Result<R::Meta, Error>>,
 }
 
-impl<T: Field> SubscribeFn for SubscribeLastVec<T> {
-    type Request = [T];
-    type Output = Vec<T>;
+impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeLastVec<R> {
+    type Request = R;
+    type Output = (R::Meta, Vec<R::Field>);
     fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.result = Some(input.map(|src| {
+        self.result = Some(input.map(|req| {
             self.buffer.clear();
-            self.buffer.extend_from_slice(src);
+            self.buffer.extend_from_slice(req.values());
+            *req.meta()
         }));
     }
     fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
         self.result
             .take()
-            .map(|res| res.map(|()| mem::take(&mut self.buffer)))
+            .map(|res| res.map(|meta| (meta, mem::take(&mut self.buffer))))
     }
 }

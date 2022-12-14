@@ -20,7 +20,7 @@ use std::{
 
 pub trait GetFn: Send {
     type Request: ReadRequest + ?Sized;
-    type Output: Send + Sized;
+    type Output: Send;
 
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error>;
 }
@@ -196,5 +196,50 @@ impl<T: Field> GetFn for GetVec<T> {
     type Output = Vec<T>;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
         input.map(|src| Vec::from_iter(src.iter().cloned()))
+    }
+}
+
+pub struct GetWrapper<R, O, F>
+where
+    R: ReadRequest + ?Sized,
+    O: Send,
+    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
+{
+    func: F,
+    _p: PhantomData<(*const R, O)>,
+}
+
+unsafe impl<R, O, F> Send for GetWrapper<R, O, F>
+where
+    R: ReadRequest + ?Sized,
+    O: Send,
+    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
+{
+}
+
+impl<R, O, F> GetFn for GetWrapper<R, O, F>
+where
+    R: ReadRequest + ?Sized,
+    O: Send,
+    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
+{
+    type Request = R;
+    type Output = O;
+    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
+        (self.func)(input)
+    }
+}
+
+impl<R, O, F> From<F> for GetWrapper<R, O, F>
+where
+    R: ReadRequest + ?Sized,
+    O: Send,
+    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
+{
+    fn from(func: F) -> Self {
+        Self {
+            func,
+            _p: PhantomData,
+        }
     }
 }
