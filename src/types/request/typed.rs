@@ -134,10 +134,10 @@ unsafe impl<T: Field, M: Meta<T>> Request for Array<T, M> {
     const ENUM: RequestId = M::ENUM;
 
     fn len(&self) -> usize {
-        self.extent.len() + 1
+        self.extent.len()
     }
     unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error> {
-        Ok(&*(ptr::slice_from_raw_parts(ptr, count - 1) as *const Self))
+        Ok(&*(ptr::slice_from_raw_parts(ptr, count) as *const Self))
     }
 }
 impl<T: Field, M: Meta<T>> TypedRequest for Array<T, M> {

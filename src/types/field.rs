@@ -1,9 +1,10 @@
 use super::{EpicsEnum, EpicsString, FieldId};
+use std::fmt::Debug;
 
 /// # Safety
 ///
 /// Should be implemented only for types supported by channel access.
-pub unsafe trait Field: Copy + Send + Sized + 'static {
+pub unsafe trait Field: Copy + Send + Sized + 'static + Debug {
     type Raw: Copy + Send + Sized + 'static;
     const ENUM: FieldId;
 }

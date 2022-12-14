@@ -91,7 +91,6 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
                 F::Request::ENUM,
                 RequestId::try_from_raw(args.type_ as _).unwrap()
             );
-            debug_assert_ne!(args.count, 0);
             F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
         }));
         drop(proc);
