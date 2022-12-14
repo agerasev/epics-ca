@@ -4,6 +4,6 @@ pub mod error;
 pub mod types;
 pub mod utils;
 
-pub use channel::{ArrayChannel, Channel, ScalarChannel, TypedChannel};
+pub use channel::{ArrayChannel, Channel, ScalarChannel};
 pub use context::Context;
 pub use error::Error;

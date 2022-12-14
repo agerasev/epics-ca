@@ -1,12 +1,11 @@
-use super::{Channel, TypedChannel, UserData};
+use super::{Channel, UserData};
 use crate::{
     error::{result_from_raw, Error},
     types::{
-        request::{ReadRequest, Request, TypedRequest},
-        Field, RequestId,
+        request::{ReadRequest, Request},
+        RequestId,
     },
 };
-use derive_more::From;
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
@@ -43,7 +42,7 @@ pub struct Get<'a, F: GetFn> {
 }
 
 impl<'a, F: GetFn> Get<'a, F> {
-    fn new(owner: &'a mut Channel, func: F) -> Self {
+    pub(crate) fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
             state: UnsafeCell::new(GetState::Pending(func)),
@@ -52,7 +51,7 @@ impl<'a, F: GetFn> Get<'a, F> {
         }
     }
 
-    fn start(self: Pin<&mut Self>) -> Result<(), Error> {
+    pub fn start(self: Pin<&mut Self>) -> Result<(), Error> {
         assert!(!self.started);
         let this = self.project();
         let owner = this.owner;
@@ -92,7 +91,6 @@ impl<'a, F: GetFn> Get<'a, F> {
                 F::Request::ENUM,
                 RequestId::try_from_raw(args.type_ as _).unwrap()
             );
-            debug_assert_ne!(args.count, 0);
             F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
         })));
         user_data.waker.wake();
@@ -133,69 +131,6 @@ impl<'a, F: GetFn> PinnedDrop for Get<'a, F> {
         let mut proc = self.owner.user_data().process.lock().unwrap();
         proc.change_id();
         proc.data = ptr::null_mut();
-    }
-}
-
-impl Channel {
-    pub fn get_request_with<F: GetFn>(&mut self, func: F) -> Get<'_, F> {
-        Get::new(self, func)
-    }
-}
-
-impl<T: Field> TypedChannel<T> {
-    pub fn get_request_with<R, F>(&mut self, func: F) -> Get<'_, F>
-    where
-        R: TypedRequest<Field = T> + ReadRequest + ?Sized,
-        F: GetFn<Request = R>,
-    {
-        self.base.get_request_with(func)
-    }
-
-    pub fn get_with<F: GetFn<Request = [T]>>(&mut self, func: F) -> Get<'_, F> {
-        self.get_request_with(func)
-    }
-
-    pub fn get_to_slice<'a, 'b>(&'a mut self, dst: &'b mut [T]) -> Get<'a, GetToSlice<'b, T>> {
-        self.get_with(GetToSlice::from(dst))
-    }
-
-    pub fn get_vec(&mut self) -> Get<'_, GetVec<T>> {
-        self.get_with(GetVec::default())
-    }
-}
-
-#[derive(From)]
-pub struct GetToSlice<'a, T: Field> {
-    dst: &'a mut [T],
-}
-
-impl<'a, T: Field> GetFn for GetToSlice<'a, T> {
-    type Request = [T];
-    type Output = usize;
-    fn apply(self, input: Result<&[T], Error>) -> Result<Self::Output, Error> {
-        input.map(|src| {
-            let len = usize::min(self.dst.len(), src.len());
-            self.dst[..len].copy_from_slice(&src[..len]);
-            src.len()
-        })
-    }
-}
-
-pub struct GetVec<T: Field> {
-    _p: PhantomData<T>,
-}
-
-impl<T: Field> Default for GetVec<T> {
-    fn default() -> Self {
-        Self { _p: PhantomData }
-    }
-}
-
-impl<T: Field> GetFn for GetVec<T> {
-    type Request = [T];
-    type Output = Vec<T>;
-    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
-        input.map(|src| Vec::from_iter(src.iter().cloned()))
     }
 }
 

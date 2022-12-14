@@ -1,4 +1,4 @@
-use super::{Get, GetFn, Put, Subscribe, SubscribeFn, TypedChannel};
+use super::{ArrayChannel, Get, GetFn, Put, Subscribe, SubscribeFn};
 use crate::{
     error::{self, Error},
     types::{
@@ -9,7 +9,7 @@ use crate::{
 use derive_more::{Deref, DerefMut, Into};
 use std::{collections::VecDeque, marker::PhantomData};
 
-impl<T: Field> TypedChannel<T> {
+impl<T: Field> ArrayChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
         let count = match self.element_count() {
             Ok(n) => n,
@@ -26,16 +26,16 @@ impl<T: Field> TypedChannel<T> {
 #[repr(transparent)]
 #[derive(Debug, Deref, DerefMut, Into)]
 pub struct ScalarChannel<T: Field> {
-    chan: TypedChannel<T>,
+    chan: ArrayChannel<T>,
 }
 
 impl<T: Field> ScalarChannel<T> {
-    pub fn new_unchecked(chan: TypedChannel<T>) -> Self {
+    pub fn new_unchecked(chan: ArrayChannel<T>) -> Self {
         Self { chan }
     }
 
     pub fn put(&mut self, value: T) -> Result<Put<'_>, Error> {
-        self.chan.put_slice(&[value])
+        self.chan.put(&[value])
     }
 
     pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
@@ -129,12 +129,12 @@ mod tests {
 
         let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
         output.connected().await;
-        let mut output = output.into_typed::<f64>().unwrap().into_scalar().unwrap();
+        let mut output = output.into_array::<f64>().unwrap().into_scalar().unwrap();
         output.put(PI).unwrap().await.unwrap();
 
         let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
         input.connected().await;
-        let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
+        let mut input = input.into_array::<f64>().unwrap().into_scalar().unwrap();
         assert_eq!(input.get().await.unwrap(), PI);
     }
 
@@ -145,11 +145,11 @@ mod tests {
 
         let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
         output.connected().await;
-        let mut output = output.into_typed::<f64>().unwrap().into_scalar().unwrap();
+        let mut output = output.into_array::<f64>().unwrap().into_scalar().unwrap();
 
         let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
         input.connected().await;
-        let mut input = input.into_typed::<f64>().unwrap().into_scalar().unwrap();
+        let mut input = input.into_array::<f64>().unwrap().into_scalar().unwrap();
 
         output.put(0.0).unwrap().await.unwrap();
         let monitor = input.subscribe_buffered();

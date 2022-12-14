@@ -1,4 +1,4 @@
-use super::ProcessData;
+use super::{Get, GetFn, ProcessData};
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
@@ -175,6 +175,12 @@ impl Channel {
             Ordering::Release,
         );
         user_data.waker.wake();
+    }
+}
+
+impl Channel {
+    pub fn get_request_with<F: GetFn>(&mut self, func: F) -> Get<'_, F> {
+        Get::new(self, func)
     }
 }
 

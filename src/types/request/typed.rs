@@ -8,7 +8,7 @@ use std::{
     ptr, slice,
 };
 
-pub trait TypedRequest: Request {
+pub trait ArrayRequest: Request {
     type Field: Field;
     type Meta: Meta<Self::Field>;
 
@@ -18,7 +18,7 @@ pub trait TypedRequest: Request {
     fn meta(&self) -> &Self::Meta;
     fn meta_mut(&mut self) -> &mut Self::Meta;
 }
-pub trait ScalarRequest: TypedRequest + Sized + Copy {
+pub trait ScalarRequest: ArrayRequest + Sized + Copy {
     fn value(&self) -> &Self::Field;
     fn value_mut(&mut self) -> &mut Self::Field;
 }
@@ -49,7 +49,7 @@ unsafe impl<T: Field, M: Meta<T>> Request for Scalar<T, M> {
     const ENUM: RequestId = M::ENUM;
     impl_scalar_request_methods!();
 }
-impl<T: Field, M: Meta<T>> TypedRequest for Scalar<T, M> {
+impl<T: Field, M: Meta<T>> ArrayRequest for Scalar<T, M> {
     type Field = T;
     type Meta = M;
 
@@ -82,7 +82,7 @@ unsafe impl<T: Field> Request for T {
     const ENUM: RequestId = RequestId::Base(T::ENUM);
     impl_scalar_request_methods!();
 }
-impl<T: Field> TypedRequest for T {
+impl<T: Field> ArrayRequest for T {
     type Field = T;
     type Meta = ();
 
@@ -140,7 +140,7 @@ unsafe impl<T: Field, M: Meta<T>> Request for Array<T, M> {
         Ok(&*(ptr::slice_from_raw_parts(ptr, count) as *const Self))
     }
 }
-impl<T: Field, M: Meta<T>> TypedRequest for Array<T, M> {
+impl<T: Field, M: Meta<T>> ArrayRequest for Array<T, M> {
     type Field = T;
     type Meta = M;
 
@@ -171,7 +171,7 @@ unsafe impl<T: Field> Request for [T] {
         Ok(&*(ptr::slice_from_raw_parts(ptr, count) as *const Self))
     }
 }
-impl<T: Field> TypedRequest for [T] {
+impl<T: Field> ArrayRequest for [T] {
     type Field = T;
     type Meta = ();
 

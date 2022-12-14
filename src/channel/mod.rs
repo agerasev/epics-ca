@@ -4,7 +4,6 @@ mod get;
 mod put;
 mod scalar;
 mod subscribe;
-mod typed;
 
 pub use array::*;
 pub use base::*;
@@ -12,7 +11,6 @@ pub use get::*;
 pub use put::*;
 pub use scalar::*;
 pub use subscribe::*;
-pub use typed::*;
 
 use crate::{context::Context, error::Error, types::Field};
 use std::{ffi::CStr, sync::Arc};
@@ -29,10 +27,10 @@ impl Context {
     pub async fn connect_typed<T: Field>(
         self: Arc<Context>,
         name: &CStr,
-    ) -> Result<TypedChannel<T>, Error> {
+    ) -> Result<ArrayChannel<T>, Error> {
         let mut chan = Channel::new(self, name)?;
         chan.connected().await;
-        chan.into_typed::<T>().map_err(|(err, _)| err)
+        chan.into_array::<T>().map_err(|(err, _)| err)
     }
 }
 

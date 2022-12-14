@@ -20,7 +20,7 @@ async fn connect_and_check<T: Field>(
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), dbf);
     assert_eq!(chan.element_count().unwrap(), 1);
-    chan.into_typed::<T>().unwrap().into_scalar().unwrap()
+    chan.into_array::<T>().unwrap().into_scalar().unwrap()
 }
 
 #[async_test]
@@ -85,7 +85,7 @@ async fn connect_and_check_array<T: Field>(
     assert_eq!(chan.name(), name);
     assert_eq!(chan.field_type().unwrap(), dbf);
     assert_eq!(chan.element_count().unwrap(), count);
-    chan.into_typed::<T>().unwrap().into_array().await.unwrap()
+    chan.into_array::<T>().unwrap()
 }
 
 #[async_test]
@@ -107,4 +107,7 @@ async fn array() {
     let data = (-64..0).collect::<Vec<_>>();
     output.put(&data).unwrap().await.unwrap();
     assert_eq!(input.get_vec().await.unwrap(), data);
+
+    output.put(&[]).unwrap().await.unwrap();
+    assert_eq!(input.get_vec().await.unwrap(), []);
 }
