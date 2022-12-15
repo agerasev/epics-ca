@@ -2,12 +2,12 @@ use super::{ArrayChannel, Get, GetFn, Put, Subscribe, SubscribeFn};
 use crate::{
     error::{self, Error},
     types::{
-        request::{ReadRequest, ScalarRequest},
+        request::{ReadRequest, TypedRequest},
         Field,
     },
 };
 use derive_more::{Deref, DerefMut, Into};
-use std::{collections::VecDeque, marker::PhantomData};
+use std::{collections::VecDeque, marker::PhantomData, ops::DerefMut};
 
 impl<T: Field> ArrayChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -40,9 +40,11 @@ impl<T: Field> ScalarChannel<T> {
 
     pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
     where
-        R: ScalarRequest<Field = T> + ReadRequest,
+        R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
-        self.chan.get_request_with(GetScalar { _p: PhantomData })
+        self.chan
+            .deref_mut()
+            .get_request_with(GetScalar { _p: PhantomData })
     }
 
     pub async fn get(&mut self) -> Result<T, Error> {
@@ -51,9 +53,10 @@ impl<T: Field> ScalarChannel<T> {
 
     pub fn subscribe_request<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
     where
-        R: ScalarRequest<Field = T> + ReadRequest,
+        R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
         self.chan
+            .deref_mut()
             .subscribe_request_with(SubscribeScalar { last: None })
     }
 
@@ -68,11 +71,11 @@ impl<T: Field> ScalarChannel<T> {
     }
 }
 
-pub struct GetScalar<R: ScalarRequest + ReadRequest> {
+pub struct GetScalar<R: TypedRequest + ReadRequest + Copy> {
     _p: PhantomData<R>,
 }
 
-impl<R: ScalarRequest + ReadRequest> GetFn for GetScalar<R> {
+impl<R: TypedRequest + ReadRequest + Copy> GetFn for GetScalar<R> {
     type Request = R;
     type Output = R;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
@@ -80,11 +83,11 @@ impl<R: ScalarRequest + ReadRequest> GetFn for GetScalar<R> {
     }
 }
 
-pub struct SubscribeScalar<R: ScalarRequest + ReadRequest> {
+pub struct SubscribeScalar<R: TypedRequest + ReadRequest + Copy> {
     last: Option<Result<R, Error>>,
 }
 
-impl<R: ScalarRequest + ReadRequest> SubscribeFn for SubscribeScalar<R> {
+impl<R: TypedRequest + ReadRequest + Copy> SubscribeFn for SubscribeScalar<R> {
     type Request = R;
     type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {

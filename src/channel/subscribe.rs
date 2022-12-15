@@ -133,9 +133,3 @@ impl<'a, F: SubscribeFn> PinnedDrop for Subscribe<'a, F> {
         drop(proc);
     }
 }
-
-impl Channel {
-    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F> {
-        Subscribe::new(self, func)
-    }
-}

@@ -20,44 +20,46 @@ fn value() {
 
 #[test]
 fn sts() {
-    assert_layout::<Scalar<u8, Sts>>();
-    assert_layout::<Scalar<i16, Sts>>();
-    assert_layout::<Scalar<EpicsEnum, Sts>>();
-    assert_layout::<Scalar<i32, Sts>>();
-    assert_layout::<Scalar<f32, Sts>>();
-    assert_layout::<Scalar<f64, Sts>>();
-    assert_layout::<Scalar<EpicsString, Sts>>();
+    assert_layout::<Sts<u8>>();
+    assert_layout::<Sts<i16>>();
+    assert_layout::<Sts<EpicsEnum>>();
+    assert_layout::<Sts<i32>>();
+    assert_layout::<Sts<f32>>();
+    assert_layout::<Sts<f64>>();
+    assert_layout::<Sts<EpicsString>>();
 }
 
 #[test]
 fn time() {
-    assert_layout::<Scalar<u8, Time>>();
-    assert_layout::<Scalar<i16, Time>>();
-    assert_layout::<Scalar<EpicsEnum, Time>>();
-    assert_layout::<Scalar<i32, Time>>();
-    assert_layout::<Scalar<f32, Time>>();
-    assert_layout::<Scalar<f64, Time>>();
-    assert_layout::<Scalar<EpicsString, Time>>();
+    assert_layout::<Time<u8>>();
+    assert_layout::<Time<i16>>();
+    assert_layout::<Time<EpicsEnum>>();
+    assert_layout::<Time<i32>>();
+    assert_layout::<Time<f32>>();
+    assert_layout::<Time<f64>>();
+    assert_layout::<Time<EpicsString>>();
 }
 
 #[test]
 fn gr() {
-    assert_layout::<Scalar<u8, GrInt<u8>>>();
-    assert_layout::<Scalar<i16, GrInt<i16>>>();
-    assert_layout::<Scalar<EpicsEnum, GrEnum>>();
-    assert_layout::<Scalar<i32, GrInt<i32>>>();
-    assert_layout::<Scalar<f32, GrFloat<f32>>>();
-    assert_layout::<Scalar<f64, GrFloat<f64>>>();
+    assert_layout::<GrInt<u8>>();
+    assert_layout::<GrInt<i16>>();
+    assert_layout::<GrEnum<EpicsEnum>>();
+    assert_layout::<GrInt<i32>>();
+    assert_layout::<GrFloat<f32>>();
+    assert_layout::<GrFloat<f64>>();
+    assert_layout::<GrString<EpicsString>>();
 }
 
 #[test]
 fn ctrl() {
-    assert_layout::<Scalar<u8, CtrlInt<u8>>>();
-    assert_layout::<Scalar<i16, CtrlInt<i16>>>();
-    assert_layout::<Scalar<EpicsEnum, CtrlEnum>>();
-    assert_layout::<Scalar<i32, CtrlInt<i32>>>();
-    assert_layout::<Scalar<f32, CtrlFloat<f32>>>();
-    assert_layout::<Scalar<f64, CtrlFloat<f64>>>();
+    assert_layout::<CtrlInt<u8>>();
+    assert_layout::<CtrlInt<i16>>();
+    assert_layout::<CtrlEnum<EpicsEnum>>();
+    assert_layout::<CtrlInt<i32>>();
+    assert_layout::<CtrlFloat<f32>>();
+    assert_layout::<CtrlFloat<f64>>();
+    assert_layout::<CtrlString<EpicsString>>();
 }
 
 #[test]
@@ -72,7 +74,7 @@ fn put_acks() {
 
 #[test]
 fn stsack_string() {
-    assert_layout::<StsackString>();
+    assert_layout::<StsackString<EpicsString>>();
 }
 
 #[test]

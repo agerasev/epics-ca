@@ -1,193 +1,346 @@
-use super::{impl_scalar_request_methods, Meta, ReadRequest, Request, WriteRequest};
+use super::{ReadRequest, Request, WriteRequest};
 use crate::{
-    error::Error,
-    types::{Field, RequestId},
+    error::{self, Error},
+    types::{
+        Alarm, EpicsEnum, EpicsString, EpicsTimeStamp, Field, Float, Int, RequestId, StaticCString,
+        Value,
+    },
 };
 use std::{
-    ops::{Deref, DerefMut},
-    ptr, slice,
+    alloc::{alloc, Layout},
+    mem::{size_of, MaybeUninit},
+    ptr,
 };
 
-pub trait ArrayRequest: Request {
-    type Field: Field;
-    type Meta: Meta<Self::Field>;
+pub const MAX_UNITS_SIZE: usize = sys::MAX_UNITS_SIZE as usize;
+pub const MAX_ENUM_STRING_SIZE: usize = sys::MAX_ENUM_STRING_SIZE as usize;
+pub const MAX_ENUM_STATES: usize = sys::MAX_ENUM_STATES as usize;
 
-    fn values(&self) -> &[Self::Field];
-    fn values_mut(&mut self) -> &mut [Self::Field];
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Units(pub StaticCString<MAX_UNITS_SIZE>);
 
-    fn meta(&self) -> &Self::Meta;
-    fn meta_mut(&mut self) -> &mut Self::Meta;
+pub trait TypedRequest: Request {
+    type Value: Value + ?Sized;
+
+    fn value(&self) -> &Self::Value;
+    fn value_mut(&mut self) -> &mut Self::Value;
 }
-pub trait ScalarRequest: ArrayRequest + Sized + Copy {
-    fn value(&self) -> &Self::Field;
-    fn value_mut(&mut self) -> &mut Self::Field;
+
+macro_rules! impl_request_methods {
+    () => {
+        fn len(&self) -> usize {
+            self.value().len()
+        }
+        unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error> {
+            match V::cast_ptr(ptr, count) {
+                Some(ptr) => Ok(&*(ptr as *const Self)),
+                None => Err(error::BADCOUNT),
+            }
+        }
+        fn clone_boxed(&self) -> Box<Self> {
+            unsafe {
+                let ptr = alloc(Layout::for_value(self));
+                let size = size_of::<Self::Raw>()
+                    + size_of::<V::Field>() * (if self.len() == 0 { 0 } else { self.len() - 1 });
+                ptr::copy_nonoverlapping(self as *const _ as *const u8, ptr, size);
+                let this_ptr = V::cast_ptr(ptr, self.len()).unwrap() as *mut Self;
+                Box::from_raw(this_ptr)
+            }
+        }
+    };
+}
+macro_rules! impl_typed_request {
+    () => {
+        type Value = V;
+
+        fn value(&self) -> &Self::Value {
+            &self.value
+        }
+        fn value_mut(&mut self) -> &mut Self::Value {
+            &mut self.value
+        }
+    };
 }
 
-// Scalar
+unsafe impl<V: Value + ?Sized> Request for V {
+    type Raw = <V::Field as Field>::Raw;
+    const ENUM: RequestId = RequestId::Base(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value + ?Sized> TypedRequest for V {
+    type Value = V;
+    fn value(&self) -> &V {
+        self
+    }
+    fn value_mut(&mut self) -> &mut V {
+        self
+    }
+}
+impl<V: Value + ?Sized> ReadRequest for V {}
+impl<V: Value + ?Sized> WriteRequest for V {}
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-pub union Scalar<T: Field, M: Meta<T>> {
-    this: M,
-    raw: M::Raw,
+#[derive(Clone, Copy, Debug)]
+pub struct Sts<V: Value + ?Sized> {
+    pub alarm: Alarm,
+    _value_padding: <V::Field as Field>::__StsPad,
+    pub value: V,
 }
-
-impl<T: Field, M: Meta<T>> Deref for Scalar<T, M> {
-    type Target = M;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &self.this }
-    }
+unsafe impl<V: Value + ?Sized> Request for Sts<V> {
+    type Raw = <V::Field as Field>::StsRaw;
+    const ENUM: RequestId = RequestId::Sts(<V::Field as Field>::ENUM);
+    impl_request_methods!();
 }
-impl<T: Field, M: Meta<T>> DerefMut for Scalar<T, M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut self.this }
-    }
+impl<V: Value + ?Sized> TypedRequest for Sts<V> {
+    impl_typed_request!();
 }
-
-unsafe impl<T: Field, M: Meta<T>> Request for Scalar<T, M> {
-    type Raw = M::Raw;
-    const ENUM: RequestId = M::ENUM;
-    impl_scalar_request_methods!();
-}
-impl<T: Field, M: Meta<T>> ArrayRequest for Scalar<T, M> {
-    type Field = T;
-    type Meta = M;
-
-    fn values(&self) -> &[Self::Field] {
-        unsafe { &*(self.value() as *const _ as *const [Self::Field; 1]) }
-    }
-    fn values_mut(&mut self) -> &mut [Self::Field] {
-        unsafe { &mut *(self.value_mut() as *mut _ as *mut [Self::Field; 1]) }
-    }
-
-    fn meta(&self) -> &Self::Meta {
-        self
-    }
-    fn meta_mut(&mut self) -> &mut Self::Meta {
-        self
-    }
-}
-impl<T: Field, M: Meta<T>> ScalarRequest for Scalar<T, M> {
-    fn value(&self) -> &T {
-        unsafe { &*(((self as *const Self).offset(1) as *const T).offset(-1)) }
-    }
-    fn value_mut(&mut self) -> &mut T {
-        unsafe { &mut *(((self as *mut Self).offset(1) as *mut T).offset(-1)) }
-    }
-}
-impl<T: Field, M: Meta<T>> ReadRequest for Scalar<T, M> {}
-
-unsafe impl<T: Field> Request for T {
-    type Raw = T::Raw;
-    const ENUM: RequestId = RequestId::Base(T::ENUM);
-    impl_scalar_request_methods!();
-}
-impl<T: Field> ArrayRequest for T {
-    type Field = T;
-    type Meta = ();
-
-    fn values(&self) -> &[Self::Field] {
-        unsafe { &*(self as *const _ as *const [Self::Field; 1]) }
-    }
-    fn values_mut(&mut self) -> &mut [Self::Field] {
-        unsafe { &mut *(self as *mut _ as *mut [Self::Field; 1]) }
-    }
-
-    fn meta(&self) -> &Self::Meta {
-        unsafe { &*(self as *const _ as *const ()) }
-    }
-    fn meta_mut(&mut self) -> &mut Self::Meta {
-        unsafe { &mut *(self as *mut _ as *mut ()) }
-    }
-}
-impl<T: Field> ScalarRequest for T {
-    fn value(&self) -> &T {
-        self
-    }
-    fn value_mut(&mut self) -> &mut T {
-        self
-    }
-}
-impl<T: Field> ReadRequest for T {}
-impl<T: Field> WriteRequest for T {}
+impl<V: Value + ?Sized> ReadRequest for Sts<V> {}
 
 #[repr(C)]
-pub struct Array<T: Field, M: Meta<T>> {
-    scalar: Scalar<T, M>,
-    extent: [T],
+#[derive(Clone, Copy, Debug)]
+pub struct StsackString<V: Value<Field = EpicsString> + ?Sized> {
+    pub alarm: Alarm,
+    pub ackt: u16,
+    pub acks: u16,
+    pub value: V,
 }
-
-impl<T: Field, M: Meta<T>> Deref for Array<T, M> {
-    type Target = M;
-    fn deref(&self) -> &Self::Target {
-        &self.scalar
-    }
+unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for StsackString<V> {
+    type Raw = sys::dbr_stsack_string;
+    const ENUM: RequestId = RequestId::StsackString;
+    impl_request_methods!();
 }
-impl<T: Field, M: Meta<T>> DerefMut for Array<T, M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.scalar
-    }
+impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for StsackString<V> {
+    impl_typed_request!();
 }
+impl<V: Value<Field = EpicsString> + ?Sized> ReadRequest for StsackString<V> {}
 
-unsafe impl<T: Field, M: Meta<T>> Request for Array<T, M> {
-    type Raw = M::Raw;
-    const ENUM: RequestId = M::ENUM;
-
-    fn len(&self) -> usize {
-        self.extent.len()
-    }
-    unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error> {
-        Ok(&*(ptr::slice_from_raw_parts(ptr, count) as *const Self))
-    }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct Time<V: Value + ?Sized> {
+    pub alarm: Alarm,
+    pub stamp: EpicsTimeStamp,
+    _value_padding: <V::Field as Field>::__TimePad,
+    pub value: V,
 }
-impl<T: Field, M: Meta<T>> ArrayRequest for Array<T, M> {
-    type Field = T;
-    type Meta = M;
-
-    fn values(&self) -> &[T] {
-        unsafe { slice::from_raw_parts(self.scalar.value() as *const T, self.len()) }
-    }
-    fn values_mut(&mut self) -> &mut [T] {
-        unsafe { slice::from_raw_parts_mut(self.scalar.value_mut() as *mut T, self.len()) }
-    }
-
-    fn meta(&self) -> &Self::Meta {
-        self
-    }
-    fn meta_mut(&mut self) -> &mut Self::Meta {
-        self
-    }
+unsafe impl<V: Value + ?Sized> Request for Time<V> {
+    type Raw = <V::Field as Field>::TimeRaw;
+    const ENUM: RequestId = RequestId::Time(<V::Field as Field>::ENUM);
+    impl_request_methods!();
 }
-impl<T: Field, M: Meta<T>> ReadRequest for Array<T, M> {}
-
-unsafe impl<T: Field> Request for [T] {
-    type Raw = T::Raw;
-    const ENUM: RequestId = RequestId::Base(T::ENUM);
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-    unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error> {
-        Ok(&*(ptr::slice_from_raw_parts(ptr, count) as *const Self))
-    }
+impl<V: Value + ?Sized> TypedRequest for Time<V> {
+    impl_typed_request!();
 }
-impl<T: Field> ArrayRequest for [T] {
-    type Field = T;
-    type Meta = ();
+impl<V: Value + ?Sized> ReadRequest for Time<V> {}
 
-    fn values(&self) -> &[T] {
-        self
-    }
-    fn values_mut(&mut self) -> &mut [T] {
-        self
-    }
-
-    fn meta(&self) -> &Self::Meta {
-        unsafe { &*(self as *const _ as *const ()) }
-    }
-    fn meta_mut(&mut self) -> &mut Self::Meta {
-        unsafe { &mut *(self as *mut _ as *mut ()) }
-    }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct GrInt<V: Value + ?Sized>
+where
+    V::Field: Int,
+{
+    pub alarm: Alarm,
+    pub units: Units,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
 }
-impl<T: Field> ReadRequest for [T] {}
-impl<T: Field> WriteRequest for [T] {}
+unsafe impl<V: Value + ?Sized> Request for GrInt<V>
+where
+    V::Field: Int,
+{
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Gr(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value + ?Sized> TypedRequest for GrInt<V>
+where
+    V::Field: Int,
+{
+    impl_typed_request!();
+}
+impl<V: Value + ?Sized> ReadRequest for GrInt<V> where V::Field: Int {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct GrFloat<V: Value + ?Sized>
+where
+    V::Field: Float,
+{
+    pub alarm: Alarm,
+    pub precision: i16,
+    _units_padding: [MaybeUninit<u8>; 2],
+    pub units: Units,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
+}
+unsafe impl<V: Value + ?Sized> Request for GrFloat<V>
+where
+    V::Field: Float,
+{
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Gr(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value + ?Sized> TypedRequest for GrFloat<V>
+where
+    V::Field: Float,
+{
+    impl_typed_request!();
+}
+impl<V: Value + ?Sized> ReadRequest for GrFloat<V> where V::Field: Float {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct GrEnum<V: Value<Field = EpicsEnum> + ?Sized> {
+    pub alarm: Alarm,
+    pub no_str: u16,
+    pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
+}
+unsafe impl<V: Value<Field = EpicsEnum> + ?Sized> Request for GrEnum<V> {
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Sts(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value<Field = EpicsEnum> + ?Sized> TypedRequest for GrEnum<V> {
+    impl_typed_request!();
+}
+impl<V: Value<Field = EpicsEnum> + ?Sized> ReadRequest for GrEnum<V> {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct GrString<V: Value<Field = EpicsString> + ?Sized> {
+    pub alarm: Alarm,
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
+}
+unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for GrString<V> {
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Gr(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for GrString<V> {
+    impl_typed_request!();
+}
+impl<V: Value<Field = EpicsString> + ?Sized> ReadRequest for GrString<V> {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CtrlInt<V: Value + ?Sized>
+where
+    V::Field: Int,
+{
+    pub alarm: Alarm,
+    pub units: Units,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    pub upper_ctrl_limit: V::Field,
+    pub lower_ctrl_limit: V::Field,
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
+}
+unsafe impl<V: Value + ?Sized> Request for CtrlInt<V>
+where
+    V::Field: Int,
+{
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Ctrl(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value + ?Sized> TypedRequest for CtrlInt<V>
+where
+    V::Field: Int,
+{
+    impl_typed_request!();
+}
+impl<V: Value + ?Sized> ReadRequest for CtrlInt<V> where V::Field: Int {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CtrlFloat<V: Value + ?Sized>
+where
+    V::Field: Float,
+{
+    pub alarm: Alarm,
+    pub precision: i16,
+    _units_padding: MaybeUninit<u16>,
+    pub units: Units,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    pub upper_ctrl_limit: V::Field,
+    pub lower_ctrl_limit: V::Field,
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
+}
+unsafe impl<V: Value + ?Sized> Request for CtrlFloat<V>
+where
+    V::Field: Float,
+{
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Ctrl(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value + ?Sized> TypedRequest for CtrlFloat<V>
+where
+    V::Field: Float,
+{
+    impl_typed_request!();
+}
+impl<V: Value + ?Sized> ReadRequest for CtrlFloat<V> where V::Field: Float {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CtrlEnum<V: Value<Field = EpicsEnum> + ?Sized> {
+    pub alarm: Alarm,
+    pub no_str: u16,
+    pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
+}
+unsafe impl<V: Value<Field = EpicsEnum> + ?Sized> Request for CtrlEnum<V> {
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Sts(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value<Field = EpicsEnum> + ?Sized> TypedRequest for CtrlEnum<V> {
+    impl_typed_request!();
+}
+impl<V: Value<Field = EpicsEnum> + ?Sized> ReadRequest for CtrlEnum<V> {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CtrlString<V: Value<Field = EpicsString> + ?Sized> {
+    pub alarm: Alarm,
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
+}
+unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for CtrlString<V> {
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Ctrl(<V::Field as Field>::ENUM);
+    impl_request_methods!();
+}
+impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for CtrlString<V> {
+    impl_typed_request!();
+}
+impl<V: Value<Field = EpicsString> + ?Sized> ReadRequest for CtrlString<V> {}
