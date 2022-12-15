@@ -74,7 +74,7 @@ fn put_acks() {
 
 #[test]
 fn stsack_string() {
-    assert_layout::<StsackString>();
+    assert_layout::<StsackString<EpicsString>>();
 }
 
 #[test]

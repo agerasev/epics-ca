@@ -66,17 +66,6 @@ impl WriteRequest for PutAcks {}
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StsackString(pub EpicsString);
-
-unsafe impl Request for StsackString {
-    type Raw = sys::dbr_stsack_string_t;
-    const ENUM: RequestId = RequestId::PutAcks;
-    impl_request_methods!();
-}
-impl ReadRequest for StsackString {}
-
-#[repr(transparent)]
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ClassName(pub EpicsString);
 
 unsafe impl Request for ClassName {

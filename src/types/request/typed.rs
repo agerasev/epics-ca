@@ -17,7 +17,7 @@ pub const MAX_ENUM_STRING_SIZE: usize = sys::MAX_ENUM_STRING_SIZE as usize;
 pub const MAX_ENUM_STATES: usize = sys::MAX_ENUM_STATES as usize;
 
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Units(pub StaticCString<MAX_UNITS_SIZE>);
 
 pub trait TypedRequest: Request {
@@ -96,6 +96,24 @@ impl<V: Value + ?Sized> TypedRequest for Sts<V> {
     impl_typed_request!();
 }
 impl<V: Value + ?Sized> ReadRequest for Sts<V> {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct StsackString<V: Value<Field = EpicsString> + ?Sized> {
+    pub alarm: Alarm,
+    pub ackt: u16,
+    pub acks: u16,
+    pub value: V,
+}
+unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for StsackString<V> {
+    type Raw = sys::dbr_stsack_string;
+    const ENUM: RequestId = RequestId::StsackString;
+    impl_request_methods!();
+}
+impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for StsackString<V> {
+    impl_typed_request!();
+}
+impl<V: Value<Field = EpicsString> + ?Sized> ReadRequest for StsackString<V> {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
