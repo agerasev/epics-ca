@@ -1,5 +1,6 @@
 use crate::types::{
     Alarm, EpicsEnum, EpicsString, EpicsTimeStamp, Field, Float, Int, RequestId, StaticCString,
+    Value,
 };
 use std::mem::MaybeUninit;
 
@@ -11,144 +12,227 @@ pub const MAX_ENUM_STATES: usize = sys::MAX_ENUM_STATES as usize;
 #[derive(Clone, Copy, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
 pub struct Units(pub StaticCString<MAX_UNITS_SIZE>);
 
-pub trait Meta<T: Field>: Copy + Send + Sized + 'static {
+pub trait Meta: Send + 'static {
+    type Value: Value;
     type Raw: Copy + Send + Sized + 'static;
     const ENUM: RequestId;
+
+    fn value(&self) -> &Self::Value;
+    fn value_mut(&mut self) -> &mut Self::Value;
 }
 
-impl<T: Field> Meta<T> for () {
-    type Raw = T::Raw;
-    const ENUM: RequestId = RequestId::Base(T::ENUM);
-}
-
-macro_rules! impl_meta {
-    ($struct:ty, $enum:path, $ty:ty, $raw:ty) => {
-        impl Meta<$ty> for $struct {
-            type Raw = $raw;
-            const ENUM: RequestId = $enum(<$ty as Field>::ENUM);
+macro_rules! impl_methods {
+    () => {
+        fn value(&self) -> &V {
+            &self.value
+        }
+        fn value_mut(&mut self) -> &mut V {
+            &mut self.value
         }
     };
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct Sts {
+pub struct Sts<V: Value> {
     pub alarm: Alarm,
+    _value_padding: <V::Field as Field>::__StsPad,
+    pub value: V,
 }
-
-impl_meta!(Sts, RequestId::Sts, u8, sys::dbr_sts_char);
-impl_meta!(Sts, RequestId::Sts, i16, sys::dbr_sts_short);
-impl_meta!(Sts, RequestId::Sts, EpicsEnum, sys::dbr_sts_enum);
-impl_meta!(Sts, RequestId::Sts, i32, sys::dbr_sts_long);
-impl_meta!(Sts, RequestId::Sts, f32, sys::dbr_sts_float);
-impl_meta!(Sts, RequestId::Sts, f64, sys::dbr_sts_double);
-impl_meta!(Sts, RequestId::Sts, EpicsString, sys::dbr_sts_string);
+impl<V: Value> Meta for Sts<V> {
+    type Value = V;
+    type Raw = <V::Field as Field>::StsRaw;
+    const ENUM: RequestId = RequestId::Sts(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct Time {
+pub struct Time<V: Value> {
     pub alarm: Alarm,
     pub stamp: EpicsTimeStamp,
+    _value_padding: <V::Field as Field>::__TimePad,
+    pub value: V,
 }
-
-impl_meta!(Time, RequestId::Time, u8, sys::dbr_time_char);
-impl_meta!(Time, RequestId::Time, i16, sys::dbr_time_short);
-impl_meta!(Time, RequestId::Time, EpicsEnum, sys::dbr_time_enum);
-impl_meta!(Time, RequestId::Time, i32, sys::dbr_time_long);
-impl_meta!(Time, RequestId::Time, f32, sys::dbr_time_float);
-impl_meta!(Time, RequestId::Time, f64, sys::dbr_time_double);
-impl_meta!(Time, RequestId::Time, EpicsString, sys::dbr_time_string);
+impl<V: Value> Meta for Time<V> {
+    type Value = V;
+    type Raw = <V::Field as Field>::TimeRaw;
+    const ENUM: RequestId = RequestId::Time(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct GrInt<T: Field + Int> {
+pub struct GrInt<V: Value>
+where
+    V::Field: Int,
+{
     pub alarm: Alarm,
     pub units: Units,
-    pub upper_disp_limit: T,
-    pub lower_disp_limit: T,
-    pub upper_alarm_limit: T,
-    pub upper_warning_limit: T,
-    pub lower_warning_limit: T,
-    pub lower_alarm_limit: T,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
 }
-
-impl_meta!(GrInt<u8>, RequestId::Gr, u8, sys::dbr_gr_char);
-impl_meta!(GrInt<i16>, RequestId::Gr, i16, sys::dbr_gr_short);
-impl_meta!(GrInt<i32>, RequestId::Gr, i32, sys::dbr_gr_long);
+impl<V: Value> Meta for GrInt<V>
+where
+    V::Field: Int,
+{
+    type Value = V;
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Gr(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct GrFloat<T: Field + Float> {
+pub struct GrFloat<V: Value>
+where
+    V::Field: Float,
+{
     pub alarm: Alarm,
     pub precision: i16,
-    _padding: MaybeUninit<u16>,
+    _units_padding: [MaybeUninit<u8>; 2],
     pub units: Units,
-    pub upper_disp_limit: T,
-    pub lower_disp_limit: T,
-    pub upper_alarm_limit: T,
-    pub upper_warning_limit: T,
-    pub lower_warning_limit: T,
-    pub lower_alarm_limit: T,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
 }
-
-impl_meta!(GrFloat<f32>, RequestId::Gr, f32, sys::dbr_gr_float);
-impl_meta!(GrFloat<f64>, RequestId::Gr, f64, sys::dbr_gr_double);
+impl<V: Value> Meta for GrFloat<V>
+where
+    V::Field: Float,
+{
+    type Value = V;
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Gr(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct GrEnum {
+pub struct GrEnum<V: Value<Field = EpicsEnum>> {
     pub alarm: Alarm,
     pub no_str: u16,
     pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
 }
-
-impl_meta!(GrEnum, RequestId::Ctrl, EpicsEnum, sys::dbr_ctrl_enum);
+impl<V: Value<Field = EpicsEnum>> Meta for GrEnum<V> {
+    type Value = V;
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Sts(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct CtrlInt<T: Field + Int> {
+pub struct GrString<V: Value<Field = EpicsString>> {
+    pub alarm: Alarm,
+    _value_padding: <V::Field as Field>::__GrPad,
+    pub value: V,
+}
+impl<V: Value<Field = EpicsString>> Meta for GrString<V> {
+    type Value = V;
+    type Raw = <V::Field as Field>::GrRaw;
+    const ENUM: RequestId = RequestId::Gr(V::Field::ENUM);
+    impl_methods!();
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CtrlInt<V: Value>
+where
+    V::Field: Int,
+{
     pub alarm: Alarm,
     pub units: Units,
-    pub upper_disp_limit: T,
-    pub lower_disp_limit: T,
-    pub upper_alarm_limit: T,
-    pub upper_warning_limit: T,
-    pub lower_warning_limit: T,
-    pub lower_alarm_limit: T,
-    pub upper_ctrl_limit: T,
-    pub lower_ctrl_limit: T,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    pub upper_ctrl_limit: V::Field,
+    pub lower_ctrl_limit: V::Field,
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
 }
-
-impl_meta!(CtrlInt<u8>, RequestId::Ctrl, u8, sys::dbr_ctrl_char);
-impl_meta!(CtrlInt<i16>, RequestId::Ctrl, i16, sys::dbr_ctrl_short);
-impl_meta!(CtrlInt<i32>, RequestId::Ctrl, i32, sys::dbr_ctrl_long);
+impl<V: Value> Meta for CtrlInt<V>
+where
+    V::Field: Int,
+{
+    type Value = V;
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Ctrl(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct CtrlFloat<T: Field + Float> {
+pub struct CtrlFloat<V: Value>
+where
+    V::Field: Float,
+{
     pub alarm: Alarm,
     pub precision: i16,
-    _padding: MaybeUninit<u16>,
+    _units_padding: MaybeUninit<u16>,
     pub units: Units,
-    pub upper_disp_limit: T,
-    pub lower_disp_limit: T,
-    pub upper_alarm_limit: T,
-    pub upper_warning_limit: T,
-    pub lower_warning_limit: T,
-    pub lower_alarm_limit: T,
-    pub upper_ctrl_limit: T,
-    pub lower_ctrl_limit: T,
+    pub upper_disp_limit: V::Field,
+    pub lower_disp_limit: V::Field,
+    pub upper_alarm_limit: V::Field,
+    pub upper_warning_limit: V::Field,
+    pub lower_warning_limit: V::Field,
+    pub lower_alarm_limit: V::Field,
+    pub upper_ctrl_limit: V::Field,
+    pub lower_ctrl_limit: V::Field,
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
 }
-
-impl_meta!(CtrlFloat<f32>, RequestId::Ctrl, f32, sys::dbr_ctrl_float);
-impl_meta!(CtrlFloat<f64>, RequestId::Ctrl, f64, sys::dbr_ctrl_double);
+impl<V: Value> Meta for CtrlFloat<V>
+where
+    V::Field: Float,
+{
+    type Value = V;
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Ctrl(V::Field::ENUM);
+    impl_methods!();
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct CtrlEnum {
+pub struct CtrlEnum<V: Value<Field = EpicsEnum>> {
     pub alarm: Alarm,
     pub no_str: u16,
     pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
+}
+impl<V: Value<Field = EpicsEnum>> Meta for CtrlEnum<V> {
+    type Value = V;
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Sts(V::Field::ENUM);
+    impl_methods!();
 }
 
-impl_meta!(CtrlEnum, RequestId::Ctrl, EpicsEnum, sys::dbr_ctrl_enum);
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CtrlString<V: Value<Field = EpicsString>> {
+    pub alarm: Alarm,
+    _value_padding: <V::Field as Field>::__CtrlPad,
+    pub value: V,
+}
+impl<V: Value<Field = EpicsString>> Meta for CtrlString<V> {
+    type Value = V;
+    type Raw = <V::Field as Field>::CtrlRaw;
+    const ENUM: RequestId = RequestId::Ctrl(V::Field::ENUM);
+    impl_methods!();
+}
