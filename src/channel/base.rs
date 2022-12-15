@@ -1,4 +1,4 @@
-use super::{Get, GetFn, ProcessData, Subscribe, SubscribeFn};
+use super::{Get, GetCallback, ProcessData, Subscribe, SubscribeQueue};
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
@@ -179,10 +179,10 @@ impl Channel {
 }
 
 impl Channel {
-    pub fn get_request_with<F: GetFn>(&mut self, func: F) -> Get<'_, F> {
+    pub fn get_with<F: GetCallback>(&mut self, func: F) -> Get<'_, F> {
         Get::new(self, func)
     }
-    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F> {
+    pub fn subscribe_with<F: SubscribeQueue>(&mut self, func: F) -> Subscribe<'_, F> {
         Subscribe::new(self, func)
     }
 }

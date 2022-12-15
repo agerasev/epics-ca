@@ -32,11 +32,11 @@ async fn analog() {
     let mut input =
         connect_and_check::<f64>(ctx.clone(), c_str!("ca:test:ai"), FieldId::Double).await;
 
-    output.put(E).unwrap().await.unwrap();
-    assert_eq!(input.get().await.unwrap(), E);
+    output.put::<f64>(E).unwrap().await.unwrap();
+    assert_eq!(input.get::<f64>().await.unwrap(), E);
 
-    output.put(PI).unwrap().await.unwrap();
-    assert_eq!(input.get().await.unwrap(), PI);
+    output.put::<f64>(PI).unwrap().await.unwrap();
+    assert_eq!(input.get::<f64>().await.unwrap(), PI);
 }
 
 #[async_test]
@@ -48,11 +48,19 @@ async fn binary() {
     let mut input =
         connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bi"), FieldId::Enum).await;
 
-    output.put(EpicsEnum(1)).unwrap().await.unwrap();
-    assert_eq!(input.get().await.unwrap(), EpicsEnum(1));
+    output
+        .put::<EpicsEnum>(EpicsEnum(1))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(input.get::<EpicsEnum>().await.unwrap(), EpicsEnum(1));
 
-    output.put(EpicsEnum(0)).unwrap().await.unwrap();
-    assert_eq!(input.get().await.unwrap(), EpicsEnum(0));
+    output
+        .put::<EpicsEnum>(EpicsEnum(0))
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(input.get::<EpicsEnum>().await.unwrap(), EpicsEnum(0));
 }
 
 #[async_test]
@@ -67,12 +75,12 @@ async fn string() {
             .await;
 
     let data = EpicsString::from_cstr(c_str!("abcdefghijklmnopqrstuvwxyz")).unwrap();
-    output.put(data).unwrap().await.unwrap();
-    assert_eq!(input.get().await.unwrap(), data);
+    output.put::<EpicsString>(data).unwrap().await.unwrap();
+    assert_eq!(input.get::<EpicsString>().await.unwrap(), data);
 
     let data = EpicsString::from_cstr(c_str!("0123456789abcdefghijABCDEFGHIJ!@#$%^&*(")).unwrap();
-    output.put(data).unwrap().await.unwrap();
-    assert_eq!(input.get().await.unwrap(), data);
+    output.put::<EpicsString>(data).unwrap().await.unwrap();
+    assert_eq!(input.get::<EpicsString>().await.unwrap(), data);
 }
 
 async fn connect_and_check_array<T: Field>(

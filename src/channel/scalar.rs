@@ -1,8 +1,8 @@
-use super::{ArrayChannel, Get, GetFn, Put, Subscribe, SubscribeFn};
+use super::{ArrayChannel, Get, GetCallback, Put, Subscribe, SubscribeQueue};
 use crate::{
     error::{self, Error},
     types::{
-        request::{ReadRequest, TypedRequest},
+        request::{ReadRequest, TypedRequest, WriteRequest},
         Field,
     },
 };
@@ -30,42 +30,41 @@ pub struct ScalarChannel<T: Field> {
 }
 
 impl<T: Field> ScalarChannel<T> {
+    /// Create [`ScalarChannel`] from [`ArrayChannel`] without checking that `element_count == 1`.
     pub fn new_unchecked(chan: ArrayChannel<T>) -> Self {
         Self { chan }
     }
 
-    pub fn put(&mut self, value: T) -> Result<Put<'_>, Error> {
+    pub fn put<R>(&mut self, value: T) -> Result<Put<'_>, Error>
+    where
+        R: TypedRequest<Value = T> + WriteRequest + Copy,
+    {
         self.chan.put(&[value])
     }
 
-    pub fn get_request<R>(&mut self) -> Get<'_, GetScalar<R>>
+    pub fn get<R>(&mut self) -> Get<'_, GetScalar<R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
         self.chan
             .deref_mut()
-            .get_request_with(GetScalar { _p: PhantomData })
+            .get_with(GetScalar { _p: PhantomData })
     }
 
-    pub async fn get(&mut self) -> Result<T, Error> {
-        self.get_request::<T>().await
-    }
-
-    pub fn subscribe_request<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
+    pub fn subscribe<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
         self.chan
             .deref_mut()
-            .subscribe_request_with(SubscribeScalar { last: None })
+            .subscribe_with(SubscribeScalar { last: None })
     }
 
-    pub fn subscribe(&mut self) -> Subscribe<'_, SubscribeScalar<T>> {
-        self.subscribe_request::<T>()
-    }
-
-    pub fn subscribe_buffered(&mut self) -> Subscribe<'_, SubscribeBuffered<T>> {
-        self.chan.subscribe_with(SubscribeBuffered {
+    pub fn subscribe_buffered<R>(&mut self) -> Subscribe<'_, SubscribeBuffered<R>>
+    where
+        R: TypedRequest<Value = T> + ReadRequest + Copy,
+    {
+        self.chan.deref_mut().subscribe_with(SubscribeBuffered {
             queue: VecDeque::new(),
         })
     }
@@ -75,7 +74,7 @@ pub struct GetScalar<R: TypedRequest + ReadRequest + Copy> {
     _p: PhantomData<R>,
 }
 
-impl<R: TypedRequest + ReadRequest + Copy> GetFn for GetScalar<R> {
+impl<R: TypedRequest + ReadRequest + Copy> GetCallback for GetScalar<R> {
     type Request = R;
     type Output = R;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
@@ -87,7 +86,7 @@ pub struct SubscribeScalar<R: TypedRequest + ReadRequest + Copy> {
     last: Option<Result<R, Error>>,
 }
 
-impl<R: TypedRequest + ReadRequest + Copy> SubscribeFn for SubscribeScalar<R> {
+impl<R: TypedRequest + ReadRequest + Copy> SubscribeQueue for SubscribeScalar<R> {
     type Request = R;
     type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
@@ -98,18 +97,15 @@ impl<R: TypedRequest + ReadRequest + Copy> SubscribeFn for SubscribeScalar<R> {
     }
 }
 
-pub struct SubscribeBuffered<T: Field> {
-    queue: VecDeque<Result<T, Error>>,
+pub struct SubscribeBuffered<R: TypedRequest + ReadRequest + Copy> {
+    queue: VecDeque<Result<R, Error>>,
 }
 
-impl<T: Field> SubscribeFn for SubscribeBuffered<T> {
-    type Request = [T];
-    type Output = T;
+impl<R: TypedRequest + ReadRequest + Copy> SubscribeQueue for SubscribeBuffered<R> {
+    type Request = R;
+    type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.queue.push_back(input.map(|data| {
-            debug_assert_eq!(data.len(), 1);
-            data[0]
-        }));
+        self.queue.push_back(input.map(|req| *req));
     }
     fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
         self.queue.pop_front()
@@ -133,12 +129,12 @@ mod tests {
         let mut output = Channel::new(ctx.clone(), c_str!("ca:test:ao")).unwrap();
         output.connected().await;
         let mut output = output.into_array::<f64>().unwrap().into_scalar().unwrap();
-        output.put(PI).unwrap().await.unwrap();
+        output.put::<f64>(PI).unwrap().await.unwrap();
 
         let mut input = Channel::new(ctx, c_str!("ca:test:ai")).unwrap();
         input.connected().await;
         let mut input = input.into_array::<f64>().unwrap().into_scalar().unwrap();
-        assert_eq!(input.get().await.unwrap(), PI);
+        assert_eq!(input.get::<f64>().await.unwrap(), PI);
     }
 
     #[async_test]
@@ -154,24 +150,25 @@ mod tests {
         input.connected().await;
         let mut input = input.into_array::<f64>().unwrap().into_scalar().unwrap();
 
-        output.put(0.0).unwrap().await.unwrap();
-        let monitor = input.subscribe_buffered();
+        output.put::<f64>(0.0).unwrap().await.unwrap();
+        let monitor = input.subscribe_buffered::<f64>();
         pin_mut!(monitor);
         assert_eq!(monitor.next().await.unwrap().unwrap(), 0.0);
 
         let count = 0x10;
+        let values = (0..count)
+            .into_iter()
+            .map(|i| (i + 1) as f64 / 16.0)
+            .collect::<Vec<_>>();
         join!(
             async {
-                for i in 0..count {
-                    output.put((i + 1) as f64 / 16.0).unwrap().await.unwrap();
+                for x in values.iter() {
+                    output.put::<f64>(*x).unwrap().await.unwrap();
                 }
             },
             async {
-                for i in 0..count {
-                    assert_eq!(
-                        monitor.next().await.unwrap().unwrap(),
-                        (i + 1) as f64 / 16.0
-                    );
+                for x in values.iter() {
+                    assert_eq!(monitor.next().await.unwrap().unwrap(), *x);
                     sleep(Duration::from_millis(10)).await;
                 }
             }

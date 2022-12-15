@@ -1,4 +1,4 @@
-use super::{Channel, Get, GetFn, Put, Subscribe, SubscribeFn};
+use super::{Channel, Get, GetCallback, Put, Subscribe, SubscribeQueue};
 use crate::{
     error::{self, Error},
     types::{
@@ -91,12 +91,12 @@ impl<T: Field> ArrayChannel<T> {
     pub fn get_request_with<R, F>(&mut self, func: F) -> Get<'_, F>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
-        F: GetFn<Request = R>,
+        F: GetCallback<Request = R>,
     {
-        self.base.get_request_with(func)
+        self.base.get_with(func)
     }
 
-    pub fn get_with<F: GetFn<Request = [T]>>(&mut self, func: F) -> Get<'_, F> {
+    pub fn get_with<F: GetCallback<Request = [T]>>(&mut self, func: F) -> Get<'_, F> {
         self.get_request_with(func)
     }
 
@@ -114,7 +114,7 @@ pub struct GetToSlice<'a, T: Field> {
     dst: &'a mut [T],
 }
 
-impl<'a, T: Field> GetFn for GetToSlice<'a, T> {
+impl<'a, T: Field> GetCallback for GetToSlice<'a, T> {
     type Request = [T];
     type Output = usize;
     fn apply(self, input: Result<&[T], Error>) -> Result<Self::Output, Error> {
@@ -136,7 +136,7 @@ impl<T: Field> Default for GetVec<T> {
     }
 }
 
-impl<T: Field> GetFn for GetVec<T> {
+impl<T: Field> GetCallback for GetVec<T> {
     type Request = [T];
     type Output = Vec<T>;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
@@ -145,25 +145,17 @@ impl<T: Field> GetFn for GetVec<T> {
 }
 
 impl<T: Field> ArrayChannel<T> {
-    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F>
+    pub fn subscribe_with<F: SubscribeQueue>(&mut self, func: F) -> Subscribe<'_, F>
     where
         F::Request: TypedRequest<Value = [T]> + ReadRequest,
     {
         Subscribe::new(self, func)
     }
 
-    pub fn subscribe_with<F: SubscribeFn<Request = [T]>>(&mut self, func: F) -> Subscribe<'_, F> {
-        self.subscribe_request_with(func)
-    }
-
-    pub fn subscribe_request_vec<R>(&mut self) -> Subscribe<'_, SubscribeBoxed<R>>
+    pub fn subscribe_boxed<R>(&mut self) -> Subscribe<'_, SubscribeBoxed<R>>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
     {
-        self.subscribe_request_with(SubscribeBoxed::default())
-    }
-
-    pub fn subscribe_vec(&mut self) -> Subscribe<'_, SubscribeBoxed<[T]>> {
         self.subscribe_with(SubscribeBoxed::default())
     }
 }
@@ -178,7 +170,7 @@ impl<R: TypedRequest + ReadRequest + ?Sized> Default for SubscribeBoxed<R> {
     }
 }
 
-impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeBoxed<R> {
+impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeQueue for SubscribeBoxed<R> {
     type Request = R;
     type Output = Box<R>;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
@@ -238,7 +230,7 @@ mod tests {
         let mut input = input.into_array::<i32>().unwrap();
 
         output.put(&[-1]).unwrap().await.unwrap();
-        let monitor = input.subscribe_vec();
+        let monitor = input.subscribe_boxed();
         pin_mut!(monitor);
         assert_eq!(Vec::from(monitor.next().await.unwrap().unwrap()), [-1]);
 

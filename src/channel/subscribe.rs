@@ -16,7 +16,7 @@ use std::{
     task::{Context, Poll},
 };
 
-pub trait SubscribeFn: Send {
+pub trait SubscribeQueue: Send {
     type Request: ReadRequest + ?Sized;
     type Output: Send + Sized;
 
@@ -26,7 +26,7 @@ pub trait SubscribeFn: Send {
 
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Subscribe<'a, F: SubscribeFn> {
+pub struct Subscribe<'a, F: SubscribeQueue> {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
     state: UnsafeCell<F>,
@@ -36,7 +36,7 @@ pub struct Subscribe<'a, F: SubscribeFn> {
     _pp: PhantomPinned,
 }
 
-impl<'a, F: SubscribeFn> Subscribe<'a, F> {
+impl<'a, F: SubscribeQueue> Subscribe<'a, F> {
     pub(crate) fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
@@ -97,7 +97,7 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
     }
 }
 
-impl<'a, F: SubscribeFn> Stream for Subscribe<'a, F> {
+impl<'a, F: SubscribeQueue> Stream for Subscribe<'a, F> {
     type Item = Result<F::Output, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -119,7 +119,7 @@ impl<'a, F: SubscribeFn> Stream for Subscribe<'a, F> {
 }
 
 #[pinned_drop]
-impl<'a, F: SubscribeFn> PinnedDrop for Subscribe<'a, F> {
+impl<'a, F: SubscribeQueue> PinnedDrop for Subscribe<'a, F> {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
