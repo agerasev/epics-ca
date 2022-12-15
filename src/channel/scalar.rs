@@ -1,10 +1,8 @@
-use super::{ArrayChannel, Get, GetCallback, Put, Subscribe, SubscribeQueue};
+use super::{get::Callback, subscribe::Queue, ArrayChannel, Get, Put, Subscription};
 use crate::{
     error::{self, Error},
-    types::{
-        request::{ReadRequest, TypedRequest, WriteRequest},
-        Field,
-    },
+    request::{ReadRequest, TypedRequest, WriteRequest},
+    types::Field,
 };
 use derive_more::{Deref, DerefMut, Into};
 use std::{collections::VecDeque, marker::PhantomData, ops::DerefMut};
@@ -51,7 +49,7 @@ impl<T: Field> ScalarChannel<T> {
             .get_with(GetScalar { _p: PhantomData })
     }
 
-    pub fn subscribe<R>(&mut self) -> Subscribe<'_, SubscribeScalar<R>>
+    pub fn subscribe<R>(&mut self) -> Subscription<'_, SubscribeScalar<R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
@@ -60,7 +58,7 @@ impl<T: Field> ScalarChannel<T> {
             .subscribe_with(SubscribeScalar { last: None })
     }
 
-    pub fn subscribe_buffered<R>(&mut self) -> Subscribe<'_, SubscribeBuffered<R>>
+    pub fn subscribe_buffered<R>(&mut self) -> Subscription<'_, SubscribeBuffered<R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
@@ -74,7 +72,7 @@ pub struct GetScalar<R: TypedRequest + ReadRequest + Copy> {
     _p: PhantomData<R>,
 }
 
-impl<R: TypedRequest + ReadRequest + Copy> GetCallback for GetScalar<R> {
+impl<R: TypedRequest + ReadRequest + Copy> Callback for GetScalar<R> {
     type Request = R;
     type Output = R;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
@@ -86,7 +84,7 @@ pub struct SubscribeScalar<R: TypedRequest + ReadRequest + Copy> {
     last: Option<Result<R, Error>>,
 }
 
-impl<R: TypedRequest + ReadRequest + Copy> SubscribeQueue for SubscribeScalar<R> {
+impl<R: TypedRequest + ReadRequest + Copy> Queue for SubscribeScalar<R> {
     type Request = R;
     type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
@@ -101,7 +99,7 @@ pub struct SubscribeBuffered<R: TypedRequest + ReadRequest + Copy> {
     queue: VecDeque<Result<R, Error>>,
 }
 
-impl<R: TypedRequest + ReadRequest + Copy> SubscribeQueue for SubscribeBuffered<R> {
+impl<R: TypedRequest + ReadRequest + Copy> Queue for SubscribeBuffered<R> {
     type Request = R;
     type Output = R;
     fn push(&mut self, input: Result<&Self::Request, Error>) {

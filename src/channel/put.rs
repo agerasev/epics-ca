@@ -1,7 +1,7 @@
-use super::{Channel, UserData};
+use super::{base::UserData, Channel};
 use crate::{
     error::{result_from_raw, Error},
-    types::request::WriteRequest,
+    request::WriteRequest,
 };
 use std::{
     future::Future,

@@ -1,10 +1,8 @@
-use super::{Channel, UserData};
+use super::{base::UserData, Channel};
 use crate::{
     error::{result_from_raw, Error},
-    types::{
-        request::{ReadRequest, Request},
-        RequestId,
-    },
+    request::{ReadRequest, Request},
+    types::RequestId,
 };
 use pin_project::{pin_project, pinned_drop};
 use std::{
@@ -17,14 +15,14 @@ use std::{
     task::{Context, Poll},
 };
 
-pub trait GetCallback: Send {
+pub trait Callback: Send {
     type Request: ReadRequest + ?Sized;
     type Output: Send;
 
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error>;
 }
 
-pub(crate) enum GetState<F: GetCallback> {
+pub(crate) enum GetState<F: Callback> {
     Empty,
     Pending(F),
     Ready(Result<F::Output, Error>),
@@ -32,7 +30,7 @@ pub(crate) enum GetState<F: GetCallback> {
 
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Get<'a, F: GetCallback> {
+pub struct Get<'a, F: Callback> {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
     state: UnsafeCell<GetState<F>>,
@@ -41,7 +39,7 @@ pub struct Get<'a, F: GetCallback> {
     _pp: PhantomPinned,
 }
 
-impl<'a, F: GetCallback> Get<'a, F> {
+impl<'a, F: Callback> Get<'a, F> {
     pub(crate) fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
@@ -97,7 +95,7 @@ impl<'a, F: GetCallback> Get<'a, F> {
     }
 }
 
-impl<'a, F: GetCallback> Future for Get<'a, F> {
+impl<'a, F: Callback> Future for Get<'a, F> {
     type Output = Result<F::Output, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.owner.user_data().waker.register(cx.waker());
@@ -125,7 +123,7 @@ impl<'a, F: GetCallback> Future for Get<'a, F> {
 }
 
 #[pinned_drop]
-impl<'a, F: GetCallback> PinnedDrop for Get<'a, F> {
+impl<'a, F: Callback> PinnedDrop for Get<'a, F> {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
@@ -152,7 +150,7 @@ where
 {
 }
 
-impl<R, O, F> GetCallback for GetFn<R, O, F>
+impl<R, O, F> Callback for GetFn<R, O, F>
 where
     R: ReadRequest + ?Sized,
     O: Send,

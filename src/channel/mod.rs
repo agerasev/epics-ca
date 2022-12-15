@@ -1,16 +1,16 @@
-mod array;
-mod base;
-mod get;
-mod put;
-mod scalar;
-mod subscribe;
+pub mod array;
+pub mod base;
+pub mod get;
+pub mod put;
+pub mod scalar;
+pub mod subscribe;
 
-pub use array::*;
-pub use base::*;
-pub use get::*;
-pub use put::*;
-pub use scalar::*;
-pub use subscribe::*;
+pub use array::ArrayChannel;
+pub use base::{Channel, Connect};
+pub use get::{Get, GetFn};
+pub use put::Put;
+pub use scalar::ScalarChannel;
+pub use subscribe::Subscription;
 
 use crate::{context::Context, error::Error, types::Field};
 use std::{ffi::CStr, sync::Arc};

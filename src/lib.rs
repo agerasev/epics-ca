@@ -1,6 +1,7 @@
 pub mod channel;
 pub mod context;
 pub mod error;
+pub mod request;
 pub mod types;
 pub mod utils;
 

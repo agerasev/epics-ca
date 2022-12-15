@@ -1,4 +1,4 @@
-use super::{Get, GetCallback, ProcessData, Subscribe, SubscribeQueue};
+use super::{array::ProcessData, get::Callback, subscribe::Queue, Get, Subscription};
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
@@ -58,8 +58,8 @@ impl Channel {
         })
     }
     /// Wait for channel become connected.
-    pub fn connected(&mut self) -> Connected<'_> {
-        Connected::new(self)
+    pub fn connected(&mut self) -> Connect<'_> {
+        Connect::new(self)
     }
 
     pub fn context(&self) -> &Arc<Context> {
@@ -130,19 +130,19 @@ impl UserData {
 }
 
 #[must_use]
-pub struct Connected<'a> {
+pub struct Connect<'a> {
     channel: Option<&'a mut Channel>,
 }
 
-impl<'a> Connected<'a> {
+impl<'a> Connect<'a> {
     fn new(channel: &'a mut Channel) -> Self {
-        Connected {
+        Connect {
             channel: Some(channel),
         }
     }
 }
 
-impl<'a> Future for Connected<'a> {
+impl<'a> Future for Connect<'a> {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Cx<'_>) -> Poll<Self::Output> {
         let channel = self.channel.take().unwrap();
@@ -156,7 +156,7 @@ impl<'a> Future for Connected<'a> {
     }
 }
 
-impl<'a> FusedFuture for Connected<'a> {
+impl<'a> FusedFuture for Connect<'a> {
     fn is_terminated(&self) -> bool {
         self.channel.is_none()
     }
@@ -179,11 +179,11 @@ impl Channel {
 }
 
 impl Channel {
-    pub fn get_with<F: GetCallback>(&mut self, func: F) -> Get<'_, F> {
+    pub fn get_with<F: Callback>(&mut self, func: F) -> Get<'_, F> {
         Get::new(self, func)
     }
-    pub fn subscribe_with<F: SubscribeQueue>(&mut self, func: F) -> Subscribe<'_, F> {
-        Subscribe::new(self, func)
+    pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F> {
+        Subscription::new(self, func)
     }
 }
 

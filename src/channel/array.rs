@@ -1,10 +1,8 @@
-use super::{Channel, Get, GetCallback, Put, Subscribe, SubscribeQueue};
+use super::{get::Callback, subscribe::Queue, Channel, Get, Put, Subscription};
 use crate::{
     error::{self, Error},
-    types::{
-        request::{ReadRequest, TypedRequest},
-        Field,
-    },
+    request::{ReadRequest, TypedRequest},
+    types::Field,
 };
 use derive_more::{Deref, DerefMut, From, Into};
 use std::{
@@ -91,12 +89,12 @@ impl<T: Field> ArrayChannel<T> {
     pub fn get_request_with<R, F>(&mut self, func: F) -> Get<'_, F>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
-        F: GetCallback<Request = R>,
+        F: Callback<Request = R>,
     {
         self.base.get_with(func)
     }
 
-    pub fn get_with<F: GetCallback<Request = [T]>>(&mut self, func: F) -> Get<'_, F> {
+    pub fn get_with<F: Callback<Request = [T]>>(&mut self, func: F) -> Get<'_, F> {
         self.get_request_with(func)
     }
 
@@ -114,7 +112,7 @@ pub struct GetToSlice<'a, T: Field> {
     dst: &'a mut [T],
 }
 
-impl<'a, T: Field> GetCallback for GetToSlice<'a, T> {
+impl<'a, T: Field> Callback for GetToSlice<'a, T> {
     type Request = [T];
     type Output = usize;
     fn apply(self, input: Result<&[T], Error>) -> Result<Self::Output, Error> {
@@ -136,7 +134,7 @@ impl<T: Field> Default for GetVec<T> {
     }
 }
 
-impl<T: Field> GetCallback for GetVec<T> {
+impl<T: Field> Callback for GetVec<T> {
     type Request = [T];
     type Output = Vec<T>;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
@@ -145,14 +143,14 @@ impl<T: Field> GetCallback for GetVec<T> {
 }
 
 impl<T: Field> ArrayChannel<T> {
-    pub fn subscribe_with<F: SubscribeQueue>(&mut self, func: F) -> Subscribe<'_, F>
+    pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F>
     where
         F::Request: TypedRequest<Value = [T]> + ReadRequest,
     {
-        Subscribe::new(self, func)
+        Subscription::new(self, func)
     }
 
-    pub fn subscribe_boxed<R>(&mut self) -> Subscribe<'_, SubscribeBoxed<R>>
+    pub fn subscribe_boxed<R>(&mut self) -> Subscription<'_, SubscribeBoxed<R>>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
     {
@@ -170,7 +168,7 @@ impl<R: TypedRequest + ReadRequest + ?Sized> Default for SubscribeBoxed<R> {
     }
 }
 
-impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeQueue for SubscribeBoxed<R> {
+impl<R: TypedRequest + ReadRequest + ?Sized> Queue for SubscribeBoxed<R> {
     type Request = R;
     type Output = Box<R>;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
