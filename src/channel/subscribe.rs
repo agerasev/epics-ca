@@ -8,7 +8,8 @@ use futures::Stream;
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
-    marker::PhantomPinned,
+    collections::VecDeque,
+    marker::{PhantomData, PhantomPinned},
     pin::Pin,
     ptr,
     task::{Context, Poll},
@@ -129,5 +130,93 @@ impl<'a, F: Queue> PinnedDrop for Subscription<'a, F> {
             });
         }
         drop(proc);
+    }
+}
+
+pub struct LastFn<I, O, F = fn(Result<&I, Error>) -> Option<Result<O, Error>>>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    func: F,
+    last: Option<Result<O, Error>>,
+    _p: PhantomData<I>,
+}
+
+impl<I, O, F> LastFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            func: f,
+            last: None,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<I, O, F> Queue for LastFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    type Request = I;
+    type Output = O;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        if let Some(output) = (self.func)(input) {
+            self.last = Some(output);
+        }
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.last.take()
+    }
+}
+
+pub struct QueueFn<I, O, F = fn(Result<&I, Error>) -> Option<Result<O, Error>>>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    func: F,
+    queue: VecDeque<Result<O, Error>>,
+    _p: PhantomData<I>,
+}
+
+impl<I, O, F> QueueFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            func: f,
+            queue: VecDeque::new(),
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<I, O, F> Queue for QueueFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    type Request = I;
+    type Output = O;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        if let Some(output) = (self.func)(input) {
+            self.queue.push_back(output);
+        }
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.queue.pop_front()
     }
 }

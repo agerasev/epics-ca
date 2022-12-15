@@ -109,13 +109,13 @@ async fn array() {
             .await;
 
     let data = (0..42).collect::<Vec<_>>();
-    output.put(&data).unwrap().await.unwrap();
-    assert_eq!(input.get_vec().await.unwrap(), data);
+    output.put::<[i32]>(&data).unwrap().await.unwrap();
+    assert_eq!(Vec::from(input.get_boxed().await.unwrap()), data);
 
     let data = (-64..0).collect::<Vec<_>>();
-    output.put(&data).unwrap().await.unwrap();
-    assert_eq!(input.get_vec().await.unwrap(), data);
+    output.put::<[i32]>(&data).unwrap().await.unwrap();
+    assert_eq!(Vec::from(input.get_boxed().await.unwrap()), data);
 
-    output.put(&[]).unwrap().await.unwrap();
-    assert_eq!(input.get_vec().await.unwrap(), []);
+    output.put::<[i32]>(&[]).unwrap().await.unwrap();
+    assert_eq!(Vec::from(input.get_boxed().await.unwrap()), []);
 }

@@ -1,10 +1,14 @@
-use super::{get::Callback, subscribe::Queue, Channel, Get, Put, Subscription};
+use super::{
+    get::Callback,
+    subscribe::{LastFn, Queue},
+    Channel, Get, GetFn, Put, Subscription,
+};
 use crate::{
     error::{self, Error},
-    request::{ReadRequest, TypedRequest},
+    request::{ReadRequest, Request, TypedRequest, WriteRequest},
     types::Field,
 };
-use derive_more::{Deref, DerefMut, From, Into};
+use derive_more::{Deref, DerefMut, Into};
 use std::{
     any::type_name,
     fmt::{self, Debug},
@@ -80,13 +84,14 @@ impl<T: Field> Debug for ArrayChannel<T> {
 }
 
 impl<T: Field> ArrayChannel<T> {
-    pub fn put(&mut self, data: &[T]) -> Result<Put<'_>, Error> {
-        self.put_request(data)
+    pub fn put<R>(&mut self, req: &R) -> Result<Put<'_>, Error>
+    where
+        R: TypedRequest<Value = [T]> + WriteRequest + ?Sized,
+    {
+        self.base.put::<R>(req)
     }
-}
 
-impl<T: Field> ArrayChannel<T> {
-    pub fn get_request_with<R, F>(&mut self, func: F) -> Get<'_, F>
+    pub fn get_with<R, F>(&mut self, func: F) -> Get<'_, F>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
         F: Callback<Request = R>,
@@ -94,20 +99,42 @@ impl<T: Field> ArrayChannel<T> {
         self.base.get_with(func)
     }
 
-    pub fn get_with<F: Callback<Request = [T]>>(&mut self, func: F) -> Get<'_, F> {
-        self.get_request_with(func)
+    pub fn get_boxed<R>(&mut self) -> Get<'_, GetFn<R, Box<R>>>
+    where
+        R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
+    {
+        self.get_with(GetFn::<R, Box<R>>::new(clone_boxed::<R>))
     }
 
     pub fn get_to_slice<'a, 'b>(&'a mut self, dst: &'b mut [T]) -> Get<'a, GetToSlice<'b, T>> {
-        self.get_with(GetToSlice::from(dst))
+        self.get_with(GetToSlice { dst })
     }
 
-    pub fn get_vec(&mut self) -> Get<'_, GetVec<T>> {
-        self.get_with(GetVec::default())
+    pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F>
+    where
+        F::Request: TypedRequest<Value = [T]> + ReadRequest,
+    {
+        Subscription::new(self, func)
+    }
+
+    pub fn subscribe_boxed<R>(&mut self) -> Subscription<'_, LastFn<R, Box<R>>>
+    where
+        R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
+    {
+        self.subscribe_with(LastFn::<R, Box<R>>::new(clone_boxed_some::<R>))
     }
 }
 
-#[derive(From)]
+fn clone_boxed<R: Request + ?Sized>(input: Result<&R, Error>) -> Result<Box<R>, Error> {
+    input.map(|req| req.clone_boxed())
+}
+
+fn clone_boxed_some<R: Request + ?Sized>(
+    input: Result<&R, Error>,
+) -> Option<Result<Box<R>, Error>> {
+    Some(input.map(|req| req.clone_boxed()))
+}
+
 pub struct GetToSlice<'a, T: Field> {
     dst: &'a mut [T],
 }
@@ -121,61 +148,6 @@ impl<'a, T: Field> Callback for GetToSlice<'a, T> {
             self.dst[..len].copy_from_slice(&src[..len]);
             src.len()
         })
-    }
-}
-
-pub struct GetVec<T: Field> {
-    _p: PhantomData<T>,
-}
-
-impl<T: Field> Default for GetVec<T> {
-    fn default() -> Self {
-        Self { _p: PhantomData }
-    }
-}
-
-impl<T: Field> Callback for GetVec<T> {
-    type Request = [T];
-    type Output = Vec<T>;
-    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
-        input.map(|src| Vec::from_iter(src.iter().cloned()))
-    }
-}
-
-impl<T: Field> ArrayChannel<T> {
-    pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F>
-    where
-        F::Request: TypedRequest<Value = [T]> + ReadRequest,
-    {
-        Subscription::new(self, func)
-    }
-
-    pub fn subscribe_boxed<R>(&mut self) -> Subscription<'_, SubscribeBoxed<R>>
-    where
-        R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
-    {
-        self.subscribe_with(SubscribeBoxed::default())
-    }
-}
-
-pub struct SubscribeBoxed<R: TypedRequest + ReadRequest + ?Sized> {
-    last: Option<Result<Box<R>, Error>>,
-}
-
-impl<R: TypedRequest + ReadRequest + ?Sized> Default for SubscribeBoxed<R> {
-    fn default() -> Self {
-        Self { last: None }
-    }
-}
-
-impl<R: TypedRequest + ReadRequest + ?Sized> Queue for SubscribeBoxed<R> {
-    type Request = R;
-    type Output = Box<R>;
-    fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.last = Some(input.map(|req| req.clone_boxed()));
-    }
-    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
-        self.last.take()
     }
 }
 
@@ -210,8 +182,8 @@ mod tests {
         let mut input = input.into_array::<i32>().unwrap();
 
         let data = (0..8).into_iter().collect::<Vec<i32>>();
-        output.put(&data).unwrap().await.unwrap();
-        assert_eq!(input.get_vec().await.unwrap(), data);
+        output.put::<[i32]>(&data).unwrap().await.unwrap();
+        assert_eq!(Vec::from(input.get_boxed().await.unwrap()), data);
     }
 
     #[async_test]
@@ -227,7 +199,7 @@ mod tests {
         input.connected().await;
         let mut input = input.into_array::<i32>().unwrap();
 
-        output.put(&[-1]).unwrap().await.unwrap();
+        output.put::<[i32]>(&[-1]).unwrap().await.unwrap();
         let monitor = input.subscribe_boxed();
         pin_mut!(monitor);
         assert_eq!(Vec::from(monitor.next().await.unwrap().unwrap()), [-1]);
@@ -235,7 +207,7 @@ mod tests {
         let count = 0x10;
         for i in 0..count {
             let data = (0..(i + 1)).collect::<Vec<_>>();
-            output.put(&data).unwrap().await.unwrap();
+            output.put::<[i32]>(&data).unwrap().await.unwrap();
             assert_eq!(Vec::from(monitor.next().await.unwrap().unwrap()), data);
         }
     }

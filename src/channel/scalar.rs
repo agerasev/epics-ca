@@ -1,11 +1,14 @@
-use super::{get::Callback, subscribe::Queue, ArrayChannel, Get, Put, Subscription};
+use super::{
+    subscribe::{LastFn, QueueFn},
+    ArrayChannel, Get, GetFn, Put, Subscription,
+};
 use crate::{
     error::{self, Error},
     request::{ReadRequest, TypedRequest, WriteRequest},
     types::Field,
 };
 use derive_more::{Deref, DerefMut, Into};
-use std::{collections::VecDeque, marker::PhantomData, ops::DerefMut};
+use std::ops::DerefMut;
 
 impl<T: Field> ArrayChannel<T> {
     pub fn into_scalar(self) -> Result<ScalarChannel<T>, (Error, Self)> {
@@ -33,81 +36,47 @@ impl<T: Field> ScalarChannel<T> {
         Self { chan }
     }
 
-    pub fn put<R>(&mut self, value: T) -> Result<Put<'_>, Error>
+    pub fn put<R>(&mut self, req: R) -> Result<Put<'_>, Error>
     where
         R: TypedRequest<Value = T> + WriteRequest + Copy,
     {
-        self.chan.put(&[value])
+        self.chan.deref_mut().put::<R>(&req)
     }
 
-    pub fn get<R>(&mut self) -> Get<'_, GetScalar<R>>
+    pub fn get<R>(&mut self) -> Get<'_, GetFn<R, R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
         self.chan
             .deref_mut()
-            .get_with(GetScalar { _p: PhantomData })
+            .get_with(GetFn::<R, R>::new(copied::<R>))
     }
 
-    pub fn subscribe<R>(&mut self) -> Subscription<'_, SubscribeScalar<R>>
+    pub fn subscribe<R>(&mut self) -> Subscription<'_, LastFn<R, R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
         self.chan
             .deref_mut()
-            .subscribe_with(SubscribeScalar { last: None })
+            .subscribe_with(LastFn::<R, R>::new(copied_some::<R>))
     }
 
-    pub fn subscribe_buffered<R>(&mut self) -> Subscription<'_, SubscribeBuffered<R>>
+    pub fn subscribe_buffered<R>(&mut self) -> Subscription<'_, QueueFn<R, R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
     {
-        self.chan.deref_mut().subscribe_with(SubscribeBuffered {
-            queue: VecDeque::new(),
-        })
+        self.chan
+            .deref_mut()
+            .subscribe_with(QueueFn::<R, R>::new(copied_some::<R>))
     }
 }
 
-pub struct GetScalar<R: TypedRequest + ReadRequest + Copy> {
-    _p: PhantomData<R>,
+fn copied<R: Copy>(input: Result<&R, Error>) -> Result<R, Error> {
+    input.copied()
 }
 
-impl<R: TypedRequest + ReadRequest + Copy> Callback for GetScalar<R> {
-    type Request = R;
-    type Output = R;
-    fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
-        input.cloned()
-    }
-}
-
-pub struct SubscribeScalar<R: TypedRequest + ReadRequest + Copy> {
-    last: Option<Result<R, Error>>,
-}
-
-impl<R: TypedRequest + ReadRequest + Copy> Queue for SubscribeScalar<R> {
-    type Request = R;
-    type Output = R;
-    fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.last = Some(input.cloned());
-    }
-    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
-        self.last.take()
-    }
-}
-
-pub struct SubscribeBuffered<R: TypedRequest + ReadRequest + Copy> {
-    queue: VecDeque<Result<R, Error>>,
-}
-
-impl<R: TypedRequest + ReadRequest + Copy> Queue for SubscribeBuffered<R> {
-    type Request = R;
-    type Output = R;
-    fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.queue.push_back(input.map(|req| *req));
-    }
-    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
-        self.queue.pop_front()
-    }
+fn copied_some<R: Copy>(input: Result<&R, Error>) -> Option<Result<R, Error>> {
+    Some(input.copied())
 }
 
 #[cfg(test)]

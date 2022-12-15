@@ -132,7 +132,7 @@ impl<'a, F: Callback> PinnedDrop for Get<'a, F> {
     }
 }
 
-pub struct GetFn<R, O, F>
+pub struct GetFn<R, O, F = fn(Result<&R, Error>) -> Result<O, Error>>
 where
     R: ReadRequest + ?Sized,
     O: Send,
@@ -140,6 +140,20 @@ where
 {
     func: F,
     _p: PhantomData<(*const R, O)>,
+}
+
+impl<R, O, F> GetFn<R, O, F>
+where
+    R: ReadRequest + ?Sized,
+    O: Send,
+    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            func: f,
+            _p: PhantomData,
+        }
+    }
 }
 
 unsafe impl<R, O, F> Send for GetFn<R, O, F>
@@ -160,19 +174,5 @@ where
     type Output = O;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
         (self.func)(input)
-    }
-}
-
-impl<R, O, F> From<F> for GetFn<R, O, F>
-where
-    R: ReadRequest + ?Sized,
-    O: Send,
-    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
-{
-    fn from(func: F) -> Self {
-        Self {
-            func,
-            _p: PhantomData,
-        }
     }
 }

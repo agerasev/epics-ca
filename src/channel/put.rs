@@ -10,7 +10,7 @@ use std::{
 };
 
 impl Channel {
-    pub fn put_request<R: WriteRequest + ?Sized>(&mut self, request: &R) -> Result<Put<'_>, Error> {
+    pub fn put<R: WriteRequest + ?Sized>(&mut self, request: &R) -> Result<Put<'_>, Error> {
         self.context()
             .with(|| {
                 let mut proc = self.user_data().process.lock().unwrap();
