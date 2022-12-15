@@ -131,13 +131,17 @@ unsafe impl Field for EpicsString {
     type __CtrlPad = ();
 }
 
-pub trait Value: Send + 'static {
+/// # Safety
+///
+/// Should be implemented only for types that represented in memory as [Self::Field].
+#[allow(clippy::len_without_is_empty)]
+pub unsafe trait Value: Send + 'static {
     type Field: Field;
 
     fn len(&self) -> usize;
     fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self>;
 }
-impl<T: Field> Value for T {
+unsafe impl<T: Field> Value for T {
     type Field = T;
 
     fn len(&self) -> usize {
@@ -151,7 +155,7 @@ impl<T: Field> Value for T {
         }
     }
 }
-impl<T: Field> Value for [T] {
+unsafe impl<T: Field> Value for [T] {
     type Field = T;
 
     fn len(&self) -> usize {

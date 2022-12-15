@@ -2,7 +2,7 @@ use super::{Channel, Get, GetFn, Put, Subscribe, SubscribeFn};
 use crate::{
     error::{self, Error},
     types::{
-        request::{ArrayRequest, ReadRequest},
+        request::{ReadRequest, TypedRequest},
         Field,
     },
 };
@@ -11,7 +11,7 @@ use std::{
     any::type_name,
     fmt::{self, Debug},
     marker::PhantomData,
-    mem, ptr,
+    ptr,
 };
 
 impl Channel {
@@ -90,7 +90,7 @@ impl<T: Field> ArrayChannel<T> {
 impl<T: Field> ArrayChannel<T> {
     pub fn get_request_with<R, F>(&mut self, func: F) -> Get<'_, F>
     where
-        R: ArrayRequest<Field = T> + ReadRequest + ?Sized,
+        R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
         F: GetFn<Request = R>,
     {
         self.base.get_request_with(func)
@@ -145,7 +145,10 @@ impl<T: Field> GetFn for GetVec<T> {
 }
 
 impl<T: Field> ArrayChannel<T> {
-    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F> {
+    pub fn subscribe_request_with<F: SubscribeFn>(&mut self, func: F) -> Subscribe<'_, F>
+    where
+        F::Request: TypedRequest<Value = [T]> + ReadRequest,
+    {
         Subscribe::new(self, func)
     }
 
@@ -153,65 +156,36 @@ impl<T: Field> ArrayChannel<T> {
         self.subscribe_request_with(func)
     }
 
-    pub fn subscribe_request_vec<R>(&mut self) -> Subscribe<'_, SubscribeRequestVec<R>>
+    pub fn subscribe_request_vec<R>(&mut self) -> Subscribe<'_, SubscribeBoxed<R>>
     where
-        R: ArrayRequest<Field = T> + ReadRequest + ?Sized,
+        R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
     {
-        self.subscribe_request_with(SubscribeRequestVec::default())
+        self.subscribe_request_with(SubscribeBoxed::default())
     }
 
-    pub fn subscribe_vec(&mut self) -> Subscribe<'_, SubscribeVec<T>> {
-        self.subscribe_with(SubscribeVec::default())
+    pub fn subscribe_vec(&mut self) -> Subscribe<'_, SubscribeBoxed<[T]>> {
+        self.subscribe_with(SubscribeBoxed::default())
     }
 }
 
-pub struct SubscribeRequestVec<R: ArrayRequest + ReadRequest + ?Sized> {
-    buffer: Vec<R::Field>,
-    result: Option<Result<R::Meta, Error>>,
+pub struct SubscribeBoxed<R: TypedRequest + ReadRequest + ?Sized> {
+    last: Option<Result<Box<R>, Error>>,
 }
 
-impl<R: ArrayRequest + ReadRequest + ?Sized> Default for SubscribeRequestVec<R> {
+impl<R: TypedRequest + ReadRequest + ?Sized> Default for SubscribeBoxed<R> {
     fn default() -> Self {
-        Self {
-            buffer: Vec::new(),
-            result: None,
-        }
+        Self { last: None }
     }
 }
 
-impl<R: ArrayRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeRequestVec<R> {
+impl<R: TypedRequest + ReadRequest + ?Sized> SubscribeFn for SubscribeBoxed<R> {
     type Request = R;
-    type Output = (R::Meta, Vec<R::Field>);
+    type Output = Box<R>;
     fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.result = Some(input.map(|req| {
-            self.buffer.clear();
-            self.buffer.extend_from_slice(req.values());
-            *req.meta()
-        }));
+        self.last = Some(input.map(|req| req.clone_boxed()));
     }
     fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
-        self.result
-            .take()
-            .map(|res| res.map(|meta| (meta, mem::take(&mut self.buffer))))
-    }
-}
-
-pub struct SubscribeVec<T: Field>(SubscribeRequestVec<[T]>);
-
-impl<T: Field> Default for SubscribeVec<T> {
-    fn default() -> Self {
-        Self(SubscribeRequestVec::default())
-    }
-}
-
-impl<T: Field> SubscribeFn for SubscribeVec<T> {
-    type Request = [T];
-    type Output = Vec<T>;
-    fn push(&mut self, input: Result<&Self::Request, Error>) {
-        self.0.push(input)
-    }
-    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
-        self.0.pop().map(|r| r.map(|x| x.1))
+        self.last.take()
     }
 }
 
@@ -266,13 +240,13 @@ mod tests {
         output.put(&[-1]).unwrap().await.unwrap();
         let monitor = input.subscribe_vec();
         pin_mut!(monitor);
-        assert_eq!(monitor.next().await.unwrap().unwrap(), [-1]);
+        assert_eq!(Vec::from(monitor.next().await.unwrap().unwrap()), [-1]);
 
         let count = 0x10;
         for i in 0..count {
             let data = (0..(i + 1)).collect::<Vec<_>>();
             output.put(&data).unwrap().await.unwrap();
-            assert_eq!(monitor.next().await.unwrap().unwrap(), data);
+            assert_eq!(Vec::from(monitor.next().await.unwrap().unwrap()), data);
         }
     }
 }

@@ -18,6 +18,7 @@ pub unsafe trait Request: Send + 'static {
     ///
     /// Pointer must be valid and point to raw request structure.
     unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error>;
+    fn clone_boxed(&self) -> Box<Self>;
 }
 
 macro_rules! impl_request_methods {
@@ -31,6 +32,9 @@ macro_rules! impl_request_methods {
             } else {
                 Err(crate::error::BADCOUNT)
             }
+        }
+        fn clone_boxed(&self) -> Box<Self> {
+            Box::new(*self)
         }
     };
 }
@@ -61,7 +65,7 @@ unsafe impl Request for PutAcks {
 impl WriteRequest for PutAcks {}
 
 #[repr(transparent)]
-#[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StsackString(pub EpicsString);
 
 unsafe impl Request for StsackString {
@@ -72,7 +76,7 @@ unsafe impl Request for StsackString {
 impl ReadRequest for StsackString {}
 
 #[repr(transparent)]
-#[derive(Clone, Debug, Eq, Default, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ClassName(pub EpicsString);
 
 unsafe impl Request for ClassName {

@@ -1,15 +1,15 @@
-//mod array;
+mod array;
 mod base;
 mod get;
 mod put;
-//mod scalar;
+mod scalar;
 mod subscribe;
 
-//pub use array::*;
+pub use array::*;
 pub use base::*;
 pub use get::*;
 pub use put::*;
-//pub use scalar::*;
+pub use scalar::*;
 pub use subscribe::*;
 
 use crate::{context::Context, error::Error, types::Field};
@@ -34,5 +34,5 @@ impl Context {
     }
 }
 
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
