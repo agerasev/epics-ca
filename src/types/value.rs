@@ -1,3 +1,5 @@
+use crate::{error, Error};
+
 use super::{EpicsEnum, EpicsString, FieldId};
 use std::{fmt::Debug, mem::MaybeUninit, ptr};
 
@@ -6,7 +8,7 @@ use std::{fmt::Debug, mem::MaybeUninit, ptr};
 /// Should be implemented only for types supported by channel access.
 pub unsafe trait Field: Copy + Send + Sized + 'static + Debug {
     type Raw: Copy + Send + Sized + 'static;
-    const ENUM: FieldId;
+    const ID: FieldId;
 
     type StsRaw: Copy + Send + Sized + 'static;
     type TimeRaw: Copy + Send + Sized + 'static;
@@ -23,7 +25,7 @@ pub trait Float: Field {}
 
 unsafe impl Field for u8 {
     type Raw = u8;
-    const ENUM: FieldId = FieldId::Char;
+    const ID: FieldId = FieldId::Char;
 
     type StsRaw = sys::dbr_sts_char;
     type TimeRaw = sys::dbr_time_char;
@@ -39,7 +41,7 @@ impl Int for u8 {}
 
 unsafe impl Field for i16 {
     type Raw = i16;
-    const ENUM: FieldId = FieldId::Short;
+    const ID: FieldId = FieldId::Short;
 
     type StsRaw = sys::dbr_sts_short;
     type TimeRaw = sys::dbr_time_short;
@@ -55,7 +57,7 @@ impl Int for i16 {}
 
 unsafe impl Field for EpicsEnum {
     type Raw = u16;
-    const ENUM: FieldId = FieldId::Enum;
+    const ID: FieldId = FieldId::Enum;
 
     type StsRaw = sys::dbr_sts_enum;
     type TimeRaw = sys::dbr_time_enum;
@@ -70,7 +72,7 @@ unsafe impl Field for EpicsEnum {
 
 unsafe impl Field for i32 {
     type Raw = i32;
-    const ENUM: FieldId = FieldId::Long;
+    const ID: FieldId = FieldId::Long;
 
     type StsRaw = sys::dbr_sts_long;
     type TimeRaw = sys::dbr_time_long;
@@ -86,7 +88,7 @@ impl Int for i32 {}
 
 unsafe impl Field for f32 {
     type Raw = f32;
-    const ENUM: FieldId = FieldId::Float;
+    const ID: FieldId = FieldId::Float;
 
     type StsRaw = sys::dbr_sts_float;
     type TimeRaw = sys::dbr_time_float;
@@ -102,7 +104,7 @@ impl Float for f32 {}
 
 unsafe impl Field for f64 {
     type Raw = f64;
-    const ENUM: FieldId = FieldId::Double;
+    const ID: FieldId = FieldId::Double;
 
     type StsRaw = sys::dbr_sts_double;
     type TimeRaw = sys::dbr_time_double;
@@ -118,7 +120,7 @@ impl Float for f64 {}
 
 unsafe impl Field for EpicsString {
     type Raw = sys::epicsOldString;
-    const ENUM: FieldId = FieldId::String;
+    const ID: FieldId = FieldId::String;
 
     type StsRaw = sys::dbr_sts_string;
     type TimeRaw = sys::dbr_time_string;
@@ -140,6 +142,7 @@ pub unsafe trait Value: Send + 'static {
 
     fn len(&self) -> usize;
     fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self>;
+    fn check_type(dbf: FieldId, count: usize) -> Result<(), Error>;
 }
 unsafe impl<T: Field> Value for T {
     type Field = T;
@@ -154,6 +157,14 @@ unsafe impl<T: Field> Value for T {
             None
         }
     }
+    fn check_type(dbf: FieldId, count: usize) -> Result<(), Error> {
+        <[T]>::check_type(dbf, count)?;
+        if count != 1 {
+            Err(error::BADCOUNT)
+        } else {
+            Ok(())
+        }
+    }
 }
 unsafe impl<T: Field> Value for [T] {
     type Field = T;
@@ -163,6 +174,13 @@ unsafe impl<T: Field> Value for [T] {
     }
     fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self> {
         Some(ptr::slice_from_raw_parts(ptr as *const T, len))
+    }
+    fn check_type(dbf: FieldId, _: usize) -> Result<(), Error> {
+        if dbf != Self::Field::ID {
+            Err(error::BADTYPE)
+        } else {
+            Ok(())
+        }
     }
 }
 

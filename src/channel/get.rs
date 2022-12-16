@@ -58,7 +58,7 @@ impl<'a, F: Callback> Get<'a, F> {
             proc.data = this.state.get() as *mut u8;
             result_from_raw(unsafe {
                 sys::ca_array_get_callback(
-                    F::Request::ENUM.raw() as _,
+                    F::Request::ID.raw() as _,
                     0,
                     owner.raw(),
                     Some(Self::callback),
@@ -86,7 +86,7 @@ impl<'a, F: Callback> Get<'a, F> {
         };
         *state = GetState::Ready(func.apply(result_from_raw(args.status).and_then(|()| {
             debug_assert_eq!(
-                F::Request::ENUM,
+                F::Request::ID,
                 RequestId::try_from_raw(args.type_ as _).unwrap()
             );
             F::Request::from_ptr(args.dbr as *const u8, args.count as usize)

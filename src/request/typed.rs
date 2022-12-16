@@ -62,7 +62,7 @@ macro_rules! impl_typed_request {
 
 unsafe impl<V: Value + ?Sized> Request for V {
     type Raw = <V::Field as Field>::Raw;
-    const ENUM: RequestId = RequestId::Base(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Base(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for V {
@@ -86,7 +86,7 @@ pub struct Sts<V: Value + ?Sized> {
 }
 unsafe impl<V: Value + ?Sized> Request for Sts<V> {
     type Raw = <V::Field as Field>::StsRaw;
-    const ENUM: RequestId = RequestId::Sts(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Sts(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for Sts<V> {
@@ -104,7 +104,7 @@ pub struct StsackString<V: Value<Field = EpicsString> + ?Sized> {
 }
 unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for StsackString<V> {
     type Raw = sys::dbr_stsack_string;
-    const ENUM: RequestId = RequestId::StsackString;
+    const ID: RequestId = RequestId::StsackString;
     impl_request_methods!();
 }
 impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for StsackString<V> {
@@ -122,7 +122,7 @@ pub struct Time<V: Value + ?Sized> {
 }
 unsafe impl<V: Value + ?Sized> Request for Time<V> {
     type Raw = <V::Field as Field>::TimeRaw;
-    const ENUM: RequestId = RequestId::Time(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Time(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for Time<V> {
@@ -152,7 +152,7 @@ where
     V::Field: Int,
 {
     type Raw = <V::Field as Field>::GrRaw;
-    const ENUM: RequestId = RequestId::Gr(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Gr(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for GrInt<V>
@@ -187,7 +187,7 @@ where
     V::Field: Float,
 {
     type Raw = <V::Field as Field>::GrRaw;
-    const ENUM: RequestId = RequestId::Gr(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Gr(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for GrFloat<V>
@@ -209,7 +209,7 @@ pub struct GrEnum<V: Value<Field = EpicsEnum> + ?Sized> {
 }
 unsafe impl<V: Value<Field = EpicsEnum> + ?Sized> Request for GrEnum<V> {
     type Raw = <V::Field as Field>::GrRaw;
-    const ENUM: RequestId = RequestId::Sts(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Sts(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value<Field = EpicsEnum> + ?Sized> TypedRequest for GrEnum<V> {
@@ -226,7 +226,7 @@ pub struct GrString<V: Value<Field = EpicsString> + ?Sized> {
 }
 unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for GrString<V> {
     type Raw = <V::Field as Field>::GrRaw;
-    const ENUM: RequestId = RequestId::Gr(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Gr(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for GrString<V> {
@@ -258,7 +258,7 @@ where
     V::Field: Int,
 {
     type Raw = <V::Field as Field>::CtrlRaw;
-    const ENUM: RequestId = RequestId::Ctrl(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Ctrl(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for CtrlInt<V>
@@ -295,7 +295,7 @@ where
     V::Field: Float,
 {
     type Raw = <V::Field as Field>::CtrlRaw;
-    const ENUM: RequestId = RequestId::Ctrl(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Ctrl(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value + ?Sized> TypedRequest for CtrlFloat<V>
@@ -317,7 +317,7 @@ pub struct CtrlEnum<V: Value<Field = EpicsEnum> + ?Sized> {
 }
 unsafe impl<V: Value<Field = EpicsEnum> + ?Sized> Request for CtrlEnum<V> {
     type Raw = <V::Field as Field>::CtrlRaw;
-    const ENUM: RequestId = RequestId::Sts(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Sts(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value<Field = EpicsEnum> + ?Sized> TypedRequest for CtrlEnum<V> {
@@ -334,7 +334,7 @@ pub struct CtrlString<V: Value<Field = EpicsString> + ?Sized> {
 }
 unsafe impl<V: Value<Field = EpicsString> + ?Sized> Request for CtrlString<V> {
     type Raw = <V::Field as Field>::CtrlRaw;
-    const ENUM: RequestId = RequestId::Ctrl(<V::Field as Field>::ENUM);
+    const ID: RequestId = RequestId::Ctrl(<V::Field as Field>::ID);
     impl_request_methods!();
 }
 impl<V: Value<Field = EpicsString> + ?Sized> TypedRequest for CtrlString<V> {

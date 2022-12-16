@@ -60,7 +60,7 @@ impl<'a, F: Queue> Subscription<'a, F> {
             let mut evid: sys::evid = ptr::null_mut();
             result_from_raw(unsafe {
                 sys::ca_create_subscription(
-                    F::Request::ENUM.raw() as _,
+                    F::Request::ID.raw() as _,
                     0,
                     owner.raw(),
                     this.mask.raw() as _,
@@ -86,7 +86,7 @@ impl<'a, F: Queue> Subscription<'a, F> {
         let func = &mut *(proc.data as *mut F);
         func.push(result_from_raw(args.status).and_then(|()| {
             debug_assert_eq!(
-                F::Request::ENUM,
+                F::Request::ID,
                 RequestId::try_from_raw(args.type_ as _).unwrap()
             );
             F::Request::from_ptr(args.dbr as *const u8, args.count as usize)

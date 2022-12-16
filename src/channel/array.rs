@@ -22,7 +22,7 @@ impl Channel {
             Ok(dbf) => dbf,
             Err(err) => return Err((err, self)),
         };
-        if dbf == T::ENUM {
+        if dbf == T::ID {
             Ok(ArrayChannel::new_unchecked(self))
         } else {
             Err((error::BADTYPE, self))

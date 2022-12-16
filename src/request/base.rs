@@ -11,7 +11,7 @@ use crate::{
 #[allow(clippy::len_without_is_empty)]
 pub unsafe trait Request: Send + 'static {
     type Raw: Copy + Send + Sized + 'static;
-    const ENUM: RequestId;
+    const ID: RequestId;
 
     fn len(&self) -> usize;
     /// # Safety
@@ -48,7 +48,7 @@ pub struct PutAckt(pub u16);
 
 unsafe impl Request for PutAckt {
     type Raw = sys::dbr_put_ackt_t;
-    const ENUM: RequestId = RequestId::PutAckt;
+    const ID: RequestId = RequestId::PutAckt;
     impl_request_methods!();
 }
 impl WriteRequest for PutAckt {}
@@ -59,7 +59,7 @@ pub struct PutAcks(pub u16);
 
 unsafe impl Request for PutAcks {
     type Raw = sys::dbr_put_acks_t;
-    const ENUM: RequestId = RequestId::PutAcks;
+    const ID: RequestId = RequestId::PutAcks;
     impl_request_methods!();
 }
 impl WriteRequest for PutAcks {}
@@ -70,7 +70,7 @@ pub struct ClassName(pub EpicsString);
 
 unsafe impl Request for ClassName {
     type Raw = sys::dbr_class_name_t;
-    const ENUM: RequestId = RequestId::ClassName;
+    const ID: RequestId = RequestId::ClassName;
     impl_request_methods!();
 }
 impl ReadRequest for ClassName {}

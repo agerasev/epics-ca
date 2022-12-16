@@ -16,7 +16,7 @@ impl Channel {
                 let mut proc = self.user_data().process.lock().unwrap();
                 result_from_raw(unsafe {
                     sys::ca_array_put_callback(
-                        R::ENUM.raw() as _,
+                        R::ID.raw() as _,
                         request.len() as _,
                         self.raw(),
                         request as *const R as *const _,
