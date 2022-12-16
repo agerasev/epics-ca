@@ -35,10 +35,12 @@ impl<V: Value + ?Sized> Debug for ValueChannel<V> {
 }
 
 impl<V: Value + ?Sized> ValueChannel<V> {
+    /// Write value by reference to the channel.
     pub fn put_ref(&mut self, data: &V) -> Result<Put<'_>, Error> {
         self.typed.put_ref::<V>(data)
     }
 
+    /// Request value from the channel and call callback when it's done.
     pub fn get_with<F>(&mut self, func: F) -> Get<'_, F>
     where
         F: Callback<Request = V>,
@@ -46,38 +48,50 @@ impl<V: Value + ?Sized> ValueChannel<V> {
         self.typed.get_with(func)
     }
 
+    /// Subscribe to value updates and call closure each time when update occured.
     pub fn subscribe_with<F: Queue<Request = V>>(&mut self, func: F) -> Subscription<'_, F> {
         self.typed.subscribe_with(func)
     }
 }
 
 impl<T: Field> ValueChannel<[T]> {
+    /// Request array value and store it in [`Vec`].
     pub fn get_vec(&mut self) -> Get<'_, GetFn<[T], Vec<T>>> {
         self.get_with(GetFn::<[T], Vec<T>>::new(clone_vec::<T>))
     }
 
+    /// Write value to slice and return received value length (which may be greater than `dst` length).
     pub fn get_to_slice<'a, 'b>(&'a mut self, dst: &'b mut [T]) -> Get<'a, GetToSlice<'b, T>> {
         self.get_with(GetToSlice { dst })
     }
 
+    /// Subscribe to array value updates and obtain [`Vec`] stream.
     pub fn subscribe_vec(&mut self) -> Subscription<'_, LastFn<[T], Vec<T>>> {
         self.subscribe_with(LastFn::<[T], Vec<T>>::new(clone_vec_some::<T>))
     }
 }
 
 impl<T: Field> ValueChannel<T> {
+    /// Write scalar value.
     pub fn put(&mut self, val: T) -> Result<Put<'_>, Error> {
         self.typed.put::<T>(val)
     }
 
+    /// Get scalar value.
     pub fn get(&mut self) -> Get<'_, GetFn<T, T>> {
         self.typed.get::<T>()
     }
 
+    /// Subscribe to updates of scalar value.
+    ///
+    /// See [`TypedChannel::subscribe`].
     pub fn subscribe(&mut self) -> Subscription<'_, LastFn<T, T>> {
         self.typed.subscribe::<T>()
     }
 
+    /// Subscribe to updates of scalar value and store all updates.
+    ///
+    /// See [`TypedChannel::subscribe_buffered`].
     pub fn subscribe_buffered(&mut self) -> Subscription<'_, QueueFn<T, T>> {
         self.typed.subscribe_buffered::<T>()
     }

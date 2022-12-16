@@ -15,10 +15,12 @@ use std::{
     task::{Context, Poll},
 };
 
+/// Callback that called when request result is ready.
 pub trait Callback: Send {
     type Request: ReadRequest + ?Sized;
     type Output: Send;
 
+    /// Performs some operation on request result.
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error>;
 }
 
@@ -28,6 +30,7 @@ pub(crate) enum GetState<F: Callback> {
     Ready(Result<F::Output, Error>),
 }
 
+/// Future that performs reading from channel.
 #[must_use]
 #[pin_project(PinnedDrop)]
 pub struct Get<'a, F: Callback> {
@@ -49,6 +52,10 @@ impl<'a, F: Callback> Get<'a, F> {
         }
     }
 
+    /// Initiate reading.
+    ///
+    /// This method can be called implicitly on the first poll.
+    /// It cannot be done in constructor because `Self` must be pinned at this point.
     pub fn start(self: Pin<&mut Self>) -> Result<(), Error> {
         assert!(!self.started);
         let this = self.project();
@@ -85,11 +92,11 @@ impl<'a, F: Callback> Get<'a, F> {
             _ => unreachable!(),
         };
         *state = GetState::Ready(func.apply(result_from_raw(args.status).and_then(|()| {
-            debug_assert_eq!(
-                F::Request::ID,
-                RequestId::try_from_raw(args.type_ as _).unwrap()
-            );
-            F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
+            F::Request::from_ptr(
+                args.dbr as *const u8,
+                RequestId::try_from_raw(args.type_ as _).unwrap(),
+                args.count as usize,
+            )
         })));
         user_data.waker.wake();
     }
@@ -132,6 +139,7 @@ impl<'a, F: Callback> PinnedDrop for Get<'a, F> {
     }
 }
 
+/// Adapter that allows to use arbitrary function or closure as [`Callback`].
 pub struct GetFn<R, O, F = fn(Result<&R, Error>) -> Result<O, Error>>
 where
     R: ReadRequest + ?Sized,

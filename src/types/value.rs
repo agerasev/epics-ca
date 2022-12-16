@@ -1,13 +1,15 @@
-use crate::{error, Error};
-
 use super::{EpicsEnum, EpicsString, FieldId};
 use std::{fmt::Debug, mem::MaybeUninit, ptr};
 
+/// Field of the channel.
+///
 /// # Safety
 ///
 /// Should be implemented only for types supported by channel access.
 pub unsafe trait Field: Copy + Send + Sized + 'static + Debug {
+    /// Raw field structure.
     type Raw: Copy + Send + Sized + 'static;
+    /// Field type identifier.
     const ID: FieldId;
 
     type StsRaw: Copy + Send + Sized + 'static;
@@ -20,7 +22,9 @@ pub unsafe trait Field: Copy + Send + Sized + 'static + Debug {
     type __GrPad: Copy + Send + Sized + 'static + Debug;
     type __CtrlPad: Copy + Send + Sized + 'static + Debug;
 }
+/// Integral field.
 pub trait Int: Field {}
+// Floating-point field.
 pub trait Float: Field {}
 
 unsafe impl Field for u8 {
@@ -133,54 +137,52 @@ unsafe impl Field for EpicsString {
     type __CtrlPad = ();
 }
 
+/// Value of the channel.
+///
+/// Consists of single or many items.
+///
 /// # Safety
 ///
-/// Should be implemented only for types that represented in memory as [Self::Field].
+/// Should be implemented only for types that represented in memory as [Self::Item].
 #[allow(clippy::len_without_is_empty)]
 pub unsafe trait Value: Send + 'static {
-    type Field: Field;
+    /// Type of the item.
+    type Item: Field;
 
+    /// Length of the value.
     fn len(&self) -> usize;
-    fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self>;
-    fn check_type(dbf: FieldId, count: usize) -> Result<(), Error>;
+    /// Check that provided length allowed for `Self`.
+    #[must_use]
+    fn check_len(count: usize) -> bool;
+    /// Create pointer (possibly wide) to value from raw pointer.
+    fn cast_ptr(ptr: *const u8, len: usize) -> *const Self;
 }
+
 unsafe impl<T: Field> Value for T {
-    type Field = T;
+    type Item = T;
 
     fn len(&self) -> usize {
         1
     }
-    fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self> {
-        if len == 1 {
-            Some(ptr as *const Self)
-        } else {
-            None
-        }
+    fn check_len(count: usize) -> bool {
+        count == 1
     }
-    fn check_type(dbf: FieldId, count: usize) -> Result<(), Error> {
-        <[T]>::check_type(dbf, count)?;
-        if count != 1 {
-            Err(error::BADCOUNT)
-        } else {
-            Ok(())
-        }
+    fn cast_ptr(ptr: *const u8, _: usize) -> *const Self {
+        ptr as *const Self
     }
 }
+
 unsafe impl<T: Field> Value for [T] {
-    type Field = T;
+    type Item = T;
 
     fn len(&self) -> usize {
         self.len()
     }
-    fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self> {
-        Some(ptr::slice_from_raw_parts(ptr as *const T, len))
+    fn check_len(_: usize) -> bool {
+        true
     }
-    fn check_type(dbf: FieldId, _: usize) -> Result<(), Error> {
-        if dbf != Self::Field::ID {
-            Err(error::BADTYPE)
-        } else {
-            Ok(())
-        }
+    fn cast_ptr(ptr: *const u8, len: usize) -> *const Self {
+        ptr::slice_from_raw_parts(ptr as *const T, len)
     }
 }
 

@@ -1,8 +1,10 @@
 use crate::{
+    error::{self, Error},
     types::{EpicsString, RequestId},
-    Error,
 };
 
+/// Abstract request to channel.
+///
 /// # Safety
 ///
 /// Should be implemented only for requests supported by channel access.
@@ -10,14 +12,21 @@ use crate::{
 /// `Self` and `Self::Raw` must be safely transmutable to each other.
 #[allow(clippy::len_without_is_empty)]
 pub unsafe trait Request: Send + 'static {
+    /// Raw request structure.
     type Raw: Copy + Send + Sized + 'static;
+    /// Request identifier.
     const ID: RequestId;
 
+    /// Length of the value in the request.
     fn len(&self) -> usize;
+    /// Create reference (possibly wide) to the request from raw pointer and count of elements.
+    ///
     /// # Safety
     ///
     /// Pointer must be valid and point to raw request structure.
-    unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, Error>;
+    unsafe fn from_ptr<'a>(ptr: *const u8, dbr: RequestId, count: usize)
+        -> Result<&'a Self, Error>;
+    /// Clone request and put it in newly allocated box.
     fn clone_boxed(&self) -> Box<Self>;
 }
 
@@ -26,11 +35,17 @@ macro_rules! impl_request_methods {
         fn len(&self) -> usize {
             1
         }
-        unsafe fn from_ptr<'a>(ptr: *const u8, count: usize) -> Result<&'a Self, crate::Error> {
-            if count == 1 {
-                Ok(&*(ptr as *const Self))
+        unsafe fn from_ptr<'a>(
+            ptr: *const u8,
+            dbr: RequestId,
+            count: usize,
+        ) -> Result<&'a Self, Error> {
+            if dbr != Self::ID {
+                Err(error::BADTYPE)
+            } else if count != 1 {
+                Err(error::BADCOUNT)
             } else {
-                Err(crate::error::BADCOUNT)
+                Ok(&*(ptr as *const Self))
             }
         }
         fn clone_boxed(&self) -> Box<Self> {
@@ -39,7 +54,9 @@ macro_rules! impl_request_methods {
     };
 }
 
+/// Request that writes some data to channel.
 pub trait WriteRequest: Request {}
+/// Request that reads some data from channel.
 pub trait ReadRequest: Request {}
 
 #[repr(transparent)]

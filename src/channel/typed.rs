@@ -4,7 +4,7 @@ use super::{
     Channel, Get, GetFn, Put, Subscription,
 };
 use crate::{
-    error::Error,
+    error::{self, Error},
     request::{ReadRequest, Request, TypedRequest, WriteRequest},
     types::{Field, Value},
 };
@@ -17,11 +17,18 @@ use std::{
 
 impl Channel {
     fn check_type<V: Value + ?Sized>(&self) -> Result<(), Error> {
-        let dbf = self.field_type()?;
-        let count = self.element_count()?;
-        V::check_type(dbf, count)
+        if <V::Item as Field>::ID != self.field_type()? {
+            Err(error::BADTYPE)
+        } else if !V::check_len(self.element_count()?) {
+            Err(error::BADCOUNT)
+        } else {
+            Ok(())
+        }
     }
 
+    /// Convert into [`TypedChannel`].
+    ///
+    /// Conversion is successful if actual channel type matches the one passed as a parameter `V`.
     pub fn into_typed<V: Value + ?Sized>(self) -> Result<TypedChannel<V>, (Error, Self)> {
         match self.check_type::<V>() {
             Ok(()) => Ok(TypedChannel::new_unchecked(self)),
@@ -31,6 +38,8 @@ impl Channel {
 }
 
 /// Typed channel.
+///
+/// Used to make typed requests, e.g. such requests that contains typed value.
 #[repr(transparent)]
 #[derive(Deref, DerefMut, Into)]
 pub struct TypedChannel<V: Value + ?Sized> {
@@ -62,13 +71,15 @@ impl<V: Value + ?Sized> Debug for TypedChannel<V> {
 }
 
 impl<V: Value + ?Sized> TypedChannel<V> {
+    /// Make write request by reference.
     pub fn put_ref<R>(&mut self, req: &R) -> Result<Put<'_>, Error>
     where
         R: TypedRequest<Value = V> + WriteRequest + ?Sized,
     {
-        self.base.put::<R>(req)
+        self.base.put_ref::<R>(req)
     }
 
+    /// Make read request and call closure when it's done, successfully or not.
     pub fn get_with<R, F>(&mut self, func: F) -> Get<'_, F>
     where
         R: TypedRequest<Value = V> + ReadRequest + ?Sized,
@@ -77,6 +88,7 @@ impl<V: Value + ?Sized> TypedChannel<V> {
         self.base.get_with(func)
     }
 
+    /// Subscribe to channel updates and call closure each time when update occured.
     pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F>
     where
         F::Request: TypedRequest<Value = V> + ReadRequest,
@@ -86,6 +98,7 @@ impl<V: Value + ?Sized> TypedChannel<V> {
 }
 
 impl<T: Field> TypedChannel<[T]> {
+    /// Make read request and obtain boxed response.
     pub fn get_boxed<R>(&mut self) -> Get<'_, GetFn<R, Box<R>>>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
@@ -93,6 +106,7 @@ impl<T: Field> TypedChannel<[T]> {
         self.get_with(GetFn::<R, Box<R>>::new(clone_boxed::<R>))
     }
 
+    /// Subscribe to channel updates and obtain stream that provides boxed responses.
     pub fn subscribe_boxed<R>(&mut self) -> Subscription<'_, LastFn<R, Box<R>>>
     where
         R: TypedRequest<Value = [T]> + ReadRequest + ?Sized,
@@ -102,6 +116,7 @@ impl<T: Field> TypedChannel<[T]> {
 }
 
 impl<T: Field> TypedChannel<T> {
+    /// Write scalar request.
     pub fn put<R>(&mut self, req: R) -> Result<Put<'_>, Error>
     where
         R: TypedRequest<Value = T> + WriteRequest,
@@ -109,6 +124,7 @@ impl<T: Field> TypedChannel<T> {
         self.put_ref::<R>(&req)
     }
 
+    /// Get result of scalar read request.
     pub fn get<R>(&mut self) -> Get<'_, GetFn<R, R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
@@ -116,6 +132,10 @@ impl<T: Field> TypedChannel<T> {
         self.get_with(GetFn::<R, R>::new(copy::<R>))
     }
 
+    /// Subscribe to updates of scalar channel.
+    ///
+    /// Note, that returned stream stores only last unread value.
+    /// To store all values use [`Self::subscribe_buffered`].
     pub fn subscribe<R>(&mut self) -> Subscription<'_, LastFn<R, R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,
@@ -123,6 +143,10 @@ impl<T: Field> TypedChannel<T> {
         self.subscribe_with(LastFn::<R, R>::new(copy_some::<R>))
     }
 
+    /// Subscribe to updates of scalar channel and store all updates.
+    ///
+    /// This subscription contains internal buffer that can grow up to arbitrary size
+    /// especially in case of frequent channel updates.
     pub fn subscribe_buffered<R>(&mut self) -> Subscription<'_, QueueFn<R, R>>
     where
         R: TypedRequest<Value = T> + ReadRequest + Copy,

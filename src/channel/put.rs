@@ -9,27 +9,41 @@ use std::{
     task::{Context, Poll},
 };
 
-impl Channel {
-    pub fn put<R: WriteRequest + ?Sized>(&mut self, request: &R) -> Result<Put<'_>, Error> {
-        self.context()
+/// Future that waits for write request is done, successfully or not.
+///
+/// *Waiting for this future to complete is optional.
+/// The write can be done successfully even if it dropped before completion.*
+pub struct Put<'a> {
+    owner: &'a mut Channel,
+}
+
+impl<'a> Unpin for Put<'a> {}
+
+impl<'a> Put<'a> {
+    pub fn new<R: WriteRequest + ?Sized>(
+        owner: &'a mut Channel,
+        request: &R,
+    ) -> Result<Self, Error> {
+        owner
+            .context()
             .with(|| {
-                let mut proc = self.user_data().process.lock().unwrap();
+                let mut proc = owner.user_data().process.lock().unwrap();
                 result_from_raw(unsafe {
                     sys::ca_array_put_callback(
                         R::ID.raw() as _,
                         request.len() as _,
-                        self.raw(),
+                        owner.raw(),
                         request as *const R as *const _,
                         Some(Self::callback),
                         proc.id() as _,
                     )
                 })
                 .map(|()| {
-                    self.context().flush_io();
+                    owner.context().flush_io();
                     proc.put_res = None;
                 })
             })
-            .map(|()| Put { owner: self })
+            .map(|()| Self { owner })
     }
 
     unsafe extern "C" fn callback(args: sys::event_handler_args) {
@@ -43,12 +57,6 @@ impl Channel {
         user_data.waker.wake();
     }
 }
-
-pub struct Put<'a> {
-    owner: &'a mut Channel,
-}
-
-impl<'a> Unpin for Put<'a> {}
 
 impl<'a> Future for Put<'a> {
     type Output = Result<(), Error>;

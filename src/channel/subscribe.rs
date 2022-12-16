@@ -15,14 +15,24 @@ use std::{
     task::{Context, Poll},
 };
 
+/// Subscription queue.
 pub trait Queue: Send {
     type Request: ReadRequest + ?Sized;
     type Output: Send + Sized;
 
+    /// Called immediately on channel updates.
     fn push(&mut self, input: Result<&Self::Request, Error>);
+    /// Called when user tries to extract data from [`Subscription`] stream.
     fn pop(&mut self) -> Option<Result<Self::Output, Error>>;
 }
 
+/// Subscription to channel.
+///
+/// Stores queue that called each time channel is updated.
+/// Provides results extracted from queue.
+///
+/// Depending on the type of the queue stored subscription may provide
+/// either the last unread value or all received values.
 #[must_use]
 #[pin_project(PinnedDrop)]
 pub struct Subscription<'a, F: Queue> {
@@ -46,10 +56,22 @@ impl<'a, F: Queue> Subscription<'a, F> {
         }
     }
 
+    /// Set kinds of channel events this subscription should be notified.
+    ///
+    /// Default event mask is [`EventMask::VALUE`]` | `[`EventMask::ALARM`].
+    ///
+    /// *You need to call this before [`start`](`Self::start`)-ing the subscription
+    /// because after it started you cannot unpin it.*
     pub fn set_event_mask(&mut self, mask: EventMask) {
         self.mask = mask;
     }
 
+    /// Initiate subscription.
+    ///
+    /// **You will not receive channel update until this method was called, explicitly or implicitly.**
+    ///
+    /// This method can be called implicitly on the first poll.
+    /// It cannot be done in constructor because `Self` must be pinned at this point.
     pub fn start(self: Pin<&mut Self>) -> Result<(), Error> {
         assert!(self.evid.is_none());
         let this = self.project();
@@ -85,11 +107,11 @@ impl<'a, F: Queue> Subscription<'a, F> {
         }
         let func = &mut *(proc.data as *mut F);
         func.push(result_from_raw(args.status).and_then(|()| {
-            debug_assert_eq!(
-                F::Request::ID,
-                RequestId::try_from_raw(args.type_ as _).unwrap()
-            );
-            F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
+            F::Request::from_ptr(
+                args.dbr as *const u8,
+                RequestId::try_from_raw(args.type_ as _).unwrap(),
+                args.count as usize,
+            )
         }));
         drop(proc);
         user_data.waker.wake();
@@ -133,6 +155,9 @@ impl<'a, F: Queue> PinnedDrop for Subscription<'a, F> {
     }
 }
 
+/// Subscription queue that stores only last received value, applying `F` to it.
+///
+/// `F` applied to all received values. If `F` returned `None` the new value will not overwrite previous value.
 pub struct LastFn<I, O, F = fn(Result<&I, Error>) -> Option<Result<O, Error>>>
 where
     I: ReadRequest + ?Sized,
@@ -177,6 +202,9 @@ where
     }
 }
 
+/// Subscription queue that stores all received values, applying `F` to them.
+///
+/// If `F` returned `None` the value is filtered out.
 pub struct QueueFn<I, O, F = fn(Result<&I, Error>) -> Option<Result<O, Error>>>
 where
     I: ReadRequest + ?Sized,

@@ -1,7 +1,8 @@
-use super::{get::Callback, subscribe::Queue, Get, Subscription};
+use super::{get::Callback, subscribe::Queue, Get, Put, Subscription};
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
+    request::WriteRequest,
     types::FieldId,
     utils::Ptr,
 };
@@ -18,6 +19,9 @@ use std::{
     task::{Context as Cx, Poll},
 };
 
+/// Basic channel.
+///
+/// Channel is an entity that has a name and could be read, written or subscribed to.
 #[derive(Debug)]
 pub struct Channel {
     ctx: Context,
@@ -61,20 +65,22 @@ impl Channel {
     pub fn connected(&mut self) -> Connect<'_> {
         Connect::new(self)
     }
-
+    /// Context of the channel.
     pub fn context(&self) -> &Context {
         &self.ctx
     }
-    pub(crate) fn raw(&self) -> sys::chanId {
+    /// Raw channed identifier.
+    pub fn raw(&self) -> sys::chanId {
         self.raw.as_ptr()
     }
     pub(crate) fn user_data(&self) -> &UserData {
         unsafe { &*(sys::ca_puser(self.raw.as_ptr()) as *const UserData) }
     }
-
+    /// Channel name.
     pub fn name(&self) -> &CStr {
         unsafe { CStr::from_ptr(sys::ca_name(self.raw())) }
     }
+    /// Channel field type.
     pub fn field_type(&self) -> Result<FieldId, Error> {
         let raw = unsafe { sys::ca_field_type(self.raw()) } as i32;
         if raw == sys::TYPENOTCONN {
@@ -82,6 +88,7 @@ impl Channel {
         }
         FieldId::try_from_raw(raw).ok_or(error::BADTYPE)
     }
+    /// Number of elements in the channel.
     pub fn element_count(&self) -> Result<usize, Error> {
         let count = unsafe { sys::ca_element_count(self.raw()) } as usize;
         if count == 0 {
@@ -89,7 +96,7 @@ impl Channel {
         }
         Ok(count)
     }
-
+    /// Name of the host which serves the channel.
     pub fn host_name(&self) -> Result<&CStr, Error> {
         const DISCONN_HOST: &CStr =
             unsafe { CStr::from_bytes_with_nul_unchecked(b"<disconnected>\0") };
@@ -151,6 +158,7 @@ impl ProcessData {
     }
 }
 
+/// Future to wait for connection.
 #[must_use]
 pub struct Connect<'a> {
     channel: Option<&'a mut Channel>,
@@ -201,9 +209,15 @@ impl Channel {
 }
 
 impl Channel {
+    /// Make write request by reference.
+    pub fn put_ref<R: WriteRequest + ?Sized>(&mut self, req: &R) -> Result<Put<'_>, Error> {
+        Put::new(self, req)
+    }
+    /// Make read request and call closure when it's done, successfully or not.
     pub fn get_with<F: Callback>(&mut self, func: F) -> Get<'_, F> {
         Get::new(self, func)
     }
+    /// Subscribe to channel updates and call closure each time when update occured.
     pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F> {
         Subscription::new(self, func)
     }
