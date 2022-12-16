@@ -4,7 +4,14 @@ version = "0.1.0"
 edition = "2021"
 links = "ca"
 
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
+
 description = "Raw bindings for EPICS Channel Access library"
+documentation = "https://docs.rs/epics-ca-sys"
 keywords = ["epics"]
 categories = ["science", "api-bindings"]
 

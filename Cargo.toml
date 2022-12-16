@@ -2,7 +2,7 @@
 members = ["sys", "generator"]
 
 [workspace.package]
-documentation = "https://docs.rs/epics-ca"
+authors = ["Alexey Gerasev <alexey.gerasev@gmail.com>"]
 homepage = "https://github.com/agerasev/epics-ca"
 repository = "https://github.com/agerasev/epics-ca.git"
 readme = "README.md"
@@ -12,7 +12,15 @@ license = "MIT/Apache-2.0"
 name = "epics-ca"
 version = "0.1.0"
 edition = "2021"
+
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
+
 description = "Client library for EPICS Channel Access protocol"
+documentation = "https://docs.rs/epics-ca"
 keywords = ["epics", "async"]
 categories = ["science", "network-programming", "api-bindings", "asynchronous"]
 exclude = ["/ioc"]
