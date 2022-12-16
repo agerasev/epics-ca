@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 
+/// Field type identifier.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum FieldId {
     String,
@@ -41,6 +42,7 @@ impl FieldId {
     }
 }
 
+/// Request type identifier.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum RequestId {
     Base(FieldId),
@@ -180,6 +182,7 @@ bitflags! {
     }
 }
 
+/// Channel event mask.
 impl EventMask {
     pub fn try_from_raw(raw: i32) -> Option<Self> {
         Self::from_bits(raw as u32)
@@ -189,6 +192,7 @@ impl EventMask {
     }
 }
 
+/// Channel access rights.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct AccessRights {
     read_access: bool,

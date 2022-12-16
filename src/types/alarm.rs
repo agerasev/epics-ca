@@ -124,6 +124,7 @@ impl AlarmCondition {
     }
 }
 
+/// EPICS channel alarm.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Alarm {

@@ -1,12 +1,16 @@
 use super::{EpicsEnum, EpicsString, FieldId};
 use std::{fmt::Debug, mem::MaybeUninit, ptr};
 
+/// Field of the channel.
+///
 /// # Safety
 ///
 /// Should be implemented only for types supported by channel access.
 pub unsafe trait Field: Copy + Send + Sized + 'static + Debug {
+    /// Raw field structure.
     type Raw: Copy + Send + Sized + 'static;
-    const ENUM: FieldId;
+    /// Field type identifier.
+    const ID: FieldId;
 
     type StsRaw: Copy + Send + Sized + 'static;
     type TimeRaw: Copy + Send + Sized + 'static;
@@ -18,12 +22,14 @@ pub unsafe trait Field: Copy + Send + Sized + 'static + Debug {
     type __GrPad: Copy + Send + Sized + 'static + Debug;
     type __CtrlPad: Copy + Send + Sized + 'static + Debug;
 }
+/// Integral field.
 pub trait Int: Field {}
+// Floating-point field.
 pub trait Float: Field {}
 
 unsafe impl Field for u8 {
     type Raw = u8;
-    const ENUM: FieldId = FieldId::Char;
+    const ID: FieldId = FieldId::Char;
 
     type StsRaw = sys::dbr_sts_char;
     type TimeRaw = sys::dbr_time_char;
@@ -39,7 +45,7 @@ impl Int for u8 {}
 
 unsafe impl Field for i16 {
     type Raw = i16;
-    const ENUM: FieldId = FieldId::Short;
+    const ID: FieldId = FieldId::Short;
 
     type StsRaw = sys::dbr_sts_short;
     type TimeRaw = sys::dbr_time_short;
@@ -55,7 +61,7 @@ impl Int for i16 {}
 
 unsafe impl Field for EpicsEnum {
     type Raw = u16;
-    const ENUM: FieldId = FieldId::Enum;
+    const ID: FieldId = FieldId::Enum;
 
     type StsRaw = sys::dbr_sts_enum;
     type TimeRaw = sys::dbr_time_enum;
@@ -70,7 +76,7 @@ unsafe impl Field for EpicsEnum {
 
 unsafe impl Field for i32 {
     type Raw = i32;
-    const ENUM: FieldId = FieldId::Long;
+    const ID: FieldId = FieldId::Long;
 
     type StsRaw = sys::dbr_sts_long;
     type TimeRaw = sys::dbr_time_long;
@@ -86,7 +92,7 @@ impl Int for i32 {}
 
 unsafe impl Field for f32 {
     type Raw = f32;
-    const ENUM: FieldId = FieldId::Float;
+    const ID: FieldId = FieldId::Float;
 
     type StsRaw = sys::dbr_sts_float;
     type TimeRaw = sys::dbr_time_float;
@@ -102,7 +108,7 @@ impl Float for f32 {}
 
 unsafe impl Field for f64 {
     type Raw = f64;
-    const ENUM: FieldId = FieldId::Double;
+    const ID: FieldId = FieldId::Double;
 
     type StsRaw = sys::dbr_sts_double;
     type TimeRaw = sys::dbr_time_double;
@@ -118,7 +124,7 @@ impl Float for f64 {}
 
 unsafe impl Field for EpicsString {
     type Raw = sys::epicsOldString;
-    const ENUM: FieldId = FieldId::String;
+    const ID: FieldId = FieldId::String;
 
     type StsRaw = sys::dbr_sts_string;
     type TimeRaw = sys::dbr_time_string;
@@ -131,38 +137,52 @@ unsafe impl Field for EpicsString {
     type __CtrlPad = ();
 }
 
+/// Value of the channel.
+///
+/// Consists of single or many items.
+///
 /// # Safety
 ///
-/// Should be implemented only for types that represented in memory as [Self::Field].
+/// Should be implemented only for types that represented in memory as [Self::Item].
 #[allow(clippy::len_without_is_empty)]
 pub unsafe trait Value: Send + 'static {
-    type Field: Field;
+    /// Type of the item.
+    type Item: Field;
 
+    /// Length of the value.
     fn len(&self) -> usize;
-    fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self>;
+    /// Check that provided length allowed for `Self`.
+    #[must_use]
+    fn check_len(count: usize) -> bool;
+    /// Create pointer (possibly wide) to value from raw pointer.
+    fn cast_ptr(ptr: *const u8, len: usize) -> *const Self;
 }
+
 unsafe impl<T: Field> Value for T {
-    type Field = T;
+    type Item = T;
 
     fn len(&self) -> usize {
         1
     }
-    fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self> {
-        if len == 1 {
-            Some(ptr as *const Self)
-        } else {
-            None
-        }
+    fn check_len(count: usize) -> bool {
+        count == 1
+    }
+    fn cast_ptr(ptr: *const u8, _: usize) -> *const Self {
+        ptr as *const Self
     }
 }
+
 unsafe impl<T: Field> Value for [T] {
-    type Field = T;
+    type Item = T;
 
     fn len(&self) -> usize {
         self.len()
     }
-    fn cast_ptr(ptr: *const u8, len: usize) -> Option<*const Self> {
-        Some(ptr::slice_from_raw_parts(ptr as *const T, len))
+    fn check_len(_: usize) -> bool {
+        true
+    }
+    fn cast_ptr(ptr: *const u8, len: usize) -> *const Self {
+        ptr::slice_from_raw_parts(ptr as *const T, len)
     }
 }
 

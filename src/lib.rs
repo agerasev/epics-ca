@@ -1,9 +1,17 @@
-pub mod channel;
-pub mod context;
-pub mod error;
-pub mod types;
-pub mod utils;
+//! Client library for EPICS Channel Access protocol.
 
-pub use channel::{ArrayChannel, Channel, ScalarChannel};
+/// Channels
+pub mod channel;
+/// Context
+pub mod context;
+/// Error types
+pub mod error;
+/// Different types of requests
+pub mod request;
+/// Native EPICS types
+pub mod types;
+mod utils;
+
+pub use channel::{Channel, TypedChannel, ValueChannel};
 pub use context::Context;
 pub use error::Error;

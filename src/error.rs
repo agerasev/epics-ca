@@ -172,6 +172,7 @@ impl ErrorSeverity {
     }
 }
 
+/// Error that can occur in EPICS client or server.
 #[derive(Debug, Clone, Copy)]
 pub struct Error {
     pub kind: ErrorKind,
@@ -200,6 +201,7 @@ impl Error {
     }
 }
 
+/// Convert raw EPICS error to Result.
 pub fn result_from_raw(eca: i32) -> Result<(), Error> {
     match Error::try_from_raw(eca) {
         None => Ok(()),

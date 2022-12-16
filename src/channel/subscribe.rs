@@ -1,32 +1,41 @@
-use super::{Channel, UserData};
+use super::{base::UserData, Channel};
 use crate::{
     error::{result_from_raw, Error},
-    types::{
-        request::{ReadRequest, Request},
-        EventMask, RequestId,
-    },
+    request::{ReadRequest, Request},
+    types::{EventMask, RequestId},
 };
 use futures::Stream;
 use pin_project::{pin_project, pinned_drop};
 use std::{
     cell::UnsafeCell,
-    marker::PhantomPinned,
+    collections::VecDeque,
+    marker::{PhantomData, PhantomPinned},
     pin::Pin,
     ptr,
     task::{Context, Poll},
 };
 
-pub trait SubscribeFn: Send {
+/// Subscription queue.
+pub trait Queue: Send {
     type Request: ReadRequest + ?Sized;
     type Output: Send + Sized;
 
+    /// Called immediately on channel updates.
     fn push(&mut self, input: Result<&Self::Request, Error>);
+    /// Called when user tries to extract data from [`Subscription`] stream.
     fn pop(&mut self) -> Option<Result<Self::Output, Error>>;
 }
 
+/// Subscription to channel.
+///
+/// Stores queue that called each time channel is updated.
+/// Provides results extracted from queue.
+///
+/// Depending on the type of the queue stored subscription may provide
+/// either the last unread value or all received values.
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Subscribe<'a, F: SubscribeFn> {
+pub struct Subscription<'a, F: Queue> {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
     state: UnsafeCell<F>,
@@ -36,7 +45,7 @@ pub struct Subscribe<'a, F: SubscribeFn> {
     _pp: PhantomPinned,
 }
 
-impl<'a, F: SubscribeFn> Subscribe<'a, F> {
+impl<'a, F: Queue> Subscription<'a, F> {
     pub(crate) fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
@@ -47,10 +56,22 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
         }
     }
 
+    /// Set kinds of channel events this subscription should be notified.
+    ///
+    /// Default event mask is [`EventMask::VALUE`]` | `[`EventMask::ALARM`].
+    ///
+    /// *You need to call this before [`start`](`Self::start`)-ing the subscription
+    /// because after it started you cannot unpin it.*
     pub fn set_event_mask(&mut self, mask: EventMask) {
         self.mask = mask;
     }
 
+    /// Initiate subscription.
+    ///
+    /// **You will not receive channel update until this method was called, explicitly or implicitly.**
+    ///
+    /// This method can be called implicitly on the first poll.
+    /// It cannot be done in constructor because `Self` must be pinned at this point.
     pub fn start(self: Pin<&mut Self>) -> Result<(), Error> {
         assert!(self.evid.is_none());
         let this = self.project();
@@ -61,7 +82,7 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
             let mut evid: sys::evid = ptr::null_mut();
             result_from_raw(unsafe {
                 sys::ca_create_subscription(
-                    F::Request::ENUM.raw() as _,
+                    F::Request::ID.raw() as _,
                     0,
                     owner.raw(),
                     this.mask.raw() as _,
@@ -86,18 +107,18 @@ impl<'a, F: SubscribeFn> Subscribe<'a, F> {
         }
         let func = &mut *(proc.data as *mut F);
         func.push(result_from_raw(args.status).and_then(|()| {
-            debug_assert_eq!(
-                F::Request::ENUM,
-                RequestId::try_from_raw(args.type_ as _).unwrap()
-            );
-            F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
+            F::Request::from_ptr(
+                args.dbr as *const u8,
+                RequestId::try_from_raw(args.type_ as _).unwrap(),
+                args.count as usize,
+            )
         }));
         drop(proc);
         user_data.waker.wake();
     }
 }
 
-impl<'a, F: SubscribeFn> Stream for Subscribe<'a, F> {
+impl<'a, F: Queue> Stream for Subscription<'a, F> {
     type Item = Result<F::Output, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -119,7 +140,7 @@ impl<'a, F: SubscribeFn> Stream for Subscribe<'a, F> {
 }
 
 #[pinned_drop]
-impl<'a, F: SubscribeFn> PinnedDrop for Subscribe<'a, F> {
+impl<'a, F: Queue> PinnedDrop for Subscription<'a, F> {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
@@ -131,5 +152,99 @@ impl<'a, F: SubscribeFn> PinnedDrop for Subscribe<'a, F> {
             });
         }
         drop(proc);
+    }
+}
+
+/// Subscription queue that stores only last received value, applying `F` to it.
+///
+/// `F` applied to all received values. If `F` returned `None` the new value will not overwrite previous value.
+pub struct LastFn<I, O, F = fn(Result<&I, Error>) -> Option<Result<O, Error>>>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    func: F,
+    last: Option<Result<O, Error>>,
+    _p: PhantomData<I>,
+}
+
+impl<I, O, F> LastFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            func: f,
+            last: None,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<I, O, F> Queue for LastFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    type Request = I;
+    type Output = O;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        if let Some(output) = (self.func)(input) {
+            self.last = Some(output);
+        }
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.last.take()
+    }
+}
+
+/// Subscription queue that stores all received values, applying `F` to them.
+///
+/// If `F` returned `None` the value is filtered out.
+pub struct QueueFn<I, O, F = fn(Result<&I, Error>) -> Option<Result<O, Error>>>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    func: F,
+    queue: VecDeque<Result<O, Error>>,
+    _p: PhantomData<I>,
+}
+
+impl<I, O, F> QueueFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            func: f,
+            queue: VecDeque::new(),
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<I, O, F> Queue for QueueFn<I, O, F>
+where
+    I: ReadRequest + ?Sized,
+    O: Send,
+    F: FnMut(Result<&I, Error>) -> Option<Result<O, Error>> + Send,
+{
+    type Request = I;
+    type Output = O;
+    fn push(&mut self, input: Result<&Self::Request, Error>) {
+        if let Some(output) = (self.func)(input) {
+            self.queue.push_back(output);
+        }
+    }
+    fn pop(&mut self) -> Option<Result<Self::Output, Error>> {
+        self.queue.pop_front()
     }
 }
