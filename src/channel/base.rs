@@ -1,4 +1,4 @@
-use super::{Get, GetFn, ProcessData};
+use super::{get::Callback, subscribe::Queue, Get, Subscription};
 use crate::{
     context::Context,
     error::{self, result_from_raw, Error},
@@ -13,14 +13,14 @@ use std::{
     ptr::{self, NonNull},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Mutex,
     },
     task::{Context as Cx, Poll},
 };
 
 #[derive(Debug)]
 pub struct Channel {
-    ctx: Arc<Context>,
+    ctx: Context,
     raw: <sys::chanId as Ptr>::NonNull,
 }
 
@@ -28,7 +28,7 @@ unsafe impl Send for Channel where Context: Send {}
 
 impl Channel {
     /// Create channel without waiting for connection.
-    pub fn new(ctx: Arc<Context>, name: &CStr) -> Result<Self, Error> {
+    pub fn new(ctx: &Context, name: &CStr) -> Result<Self, Error> {
         ctx.clone().with(|| {
             let mut raw: sys::chanId = ptr::null_mut();
             let puser = Box::leak(Box::new(UserData::new())) as *mut UserData;
@@ -46,7 +46,7 @@ impl Channel {
                 Ok(()) => {
                     ctx.flush_io();
                     Ok(Channel {
-                        ctx,
+                        ctx: ctx.clone(),
                         raw: NonNull::new(raw).unwrap(),
                     })
                 }
@@ -58,11 +58,11 @@ impl Channel {
         })
     }
     /// Wait for channel become connected.
-    pub fn connected(&mut self) -> Connected<'_> {
-        Connected::new(self)
+    pub fn connected(&mut self) -> Connect<'_> {
+        Connect::new(self)
     }
 
-    pub fn context(&self) -> &Arc<Context> {
+    pub fn context(&self) -> &Context {
         &self.ctx
     }
     pub(crate) fn raw(&self) -> sys::chanId {
@@ -129,20 +129,42 @@ impl UserData {
     }
 }
 
+pub(crate) struct ProcessData {
+    id_counter: usize,
+    pub(crate) data: *mut u8,
+    pub(crate) put_res: Option<Result<(), Error>>,
+}
+
+impl ProcessData {
+    pub fn new() -> Self {
+        Self {
+            id_counter: 0,
+            data: ptr::null_mut(),
+            put_res: None,
+        }
+    }
+    pub fn id(&self) -> usize {
+        self.id_counter
+    }
+    pub fn change_id(&mut self) {
+        self.id_counter += 1;
+    }
+}
+
 #[must_use]
-pub struct Connected<'a> {
+pub struct Connect<'a> {
     channel: Option<&'a mut Channel>,
 }
 
-impl<'a> Connected<'a> {
+impl<'a> Connect<'a> {
     fn new(channel: &'a mut Channel) -> Self {
-        Connected {
+        Connect {
             channel: Some(channel),
         }
     }
 }
 
-impl<'a> Future for Connected<'a> {
+impl<'a> Future for Connect<'a> {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Cx<'_>) -> Poll<Self::Output> {
         let channel = self.channel.take().unwrap();
@@ -156,7 +178,7 @@ impl<'a> Future for Connected<'a> {
     }
 }
 
-impl<'a> FusedFuture for Connected<'a> {
+impl<'a> FusedFuture for Connect<'a> {
     fn is_terminated(&self) -> bool {
         self.channel.is_none()
     }
@@ -179,14 +201,17 @@ impl Channel {
 }
 
 impl Channel {
-    pub fn get_request_with<F: GetFn>(&mut self, func: F) -> Get<'_, F> {
+    pub fn get_with<F: Callback>(&mut self, func: F) -> Get<'_, F> {
         Get::new(self, func)
+    }
+    pub fn subscribe_with<F: Queue>(&mut self, func: F) -> Subscription<'_, F> {
+        Subscription::new(self, func)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Channel, Context};
+    use crate::{context::UniqueContext, Channel, Context};
     use async_std::{task::sleep, test as async_test};
     use c_str_macro::c_str;
     use futures::{select, FutureExt};
@@ -197,7 +222,7 @@ mod tests {
     #[serial]
     async fn connect() {
         let ctx = Context::new().unwrap();
-        Channel::new(ctx, c_str!("ca:test:ai"))
+        Channel::new(&ctx, c_str!("ca:test:ai"))
             .unwrap()
             .connected()
             .await;
@@ -205,7 +230,7 @@ mod tests {
 
     #[async_test]
     async fn connect_nonexistent() {
-        let mut chan = Channel::new(Context::new().unwrap(), c_str!("__nonexistent__")).unwrap();
+        let mut chan = Channel::new(&Context::new().unwrap(), c_str!("__nonexistent__")).unwrap();
         select! {
             _ = chan.connected() => panic!(),
             _ = sleep(Duration::from_millis(100)).fuse() => (),
@@ -216,11 +241,11 @@ mod tests {
     #[serial]
     async fn user_data() {
         let ctx = Context::new().unwrap();
-        let mut channel = Channel::new(ctx.clone(), c_str!("ca:test:ai")).unwrap();
+        let mut channel = Channel::new(&ctx, c_str!("ca:test:ai")).unwrap();
         channel.connected().await;
 
         // Test that user data can be accessed without context attachment.
-        assert!(Context::current().is_null());
+        assert!(UniqueContext::current().is_null());
         let user_data = channel.user_data();
         ctx.with(|| {
             assert!(ptr::eq(channel.user_data(), user_data));

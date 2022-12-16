@@ -1,7 +1,7 @@
-use super::{Channel, UserData};
+use super::{base::UserData, Channel};
 use crate::{
     error::{result_from_raw, Error},
-    types::request::WriteRequest,
+    request::WriteRequest,
 };
 use std::{
     future::Future,
@@ -10,13 +10,13 @@ use std::{
 };
 
 impl Channel {
-    pub fn put_request<R: WriteRequest + ?Sized>(&mut self, request: &R) -> Result<Put<'_>, Error> {
+    pub fn put<R: WriteRequest + ?Sized>(&mut self, request: &R) -> Result<Put<'_>, Error> {
         self.context()
             .with(|| {
                 let mut proc = self.user_data().process.lock().unwrap();
                 result_from_raw(unsafe {
                     sys::ca_array_put_callback(
-                        R::ENUM.raw() as _,
+                        R::ID.raw() as _,
                         request.len() as _,
                         self.raw(),
                         request as *const R as *const _,

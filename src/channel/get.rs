@@ -1,10 +1,8 @@
-use super::{Channel, UserData};
+use super::{base::UserData, Channel};
 use crate::{
     error::{result_from_raw, Error},
-    types::{
-        request::{ReadRequest, Request},
-        RequestId,
-    },
+    request::{ReadRequest, Request},
+    types::RequestId,
 };
 use pin_project::{pin_project, pinned_drop};
 use std::{
@@ -17,14 +15,14 @@ use std::{
     task::{Context, Poll},
 };
 
-pub trait GetFn: Send {
+pub trait Callback: Send {
     type Request: ReadRequest + ?Sized;
     type Output: Send;
 
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error>;
 }
 
-pub(crate) enum GetState<F: GetFn> {
+pub(crate) enum GetState<F: Callback> {
     Empty,
     Pending(F),
     Ready(Result<F::Output, Error>),
@@ -32,7 +30,7 @@ pub(crate) enum GetState<F: GetFn> {
 
 #[must_use]
 #[pin_project(PinnedDrop)]
-pub struct Get<'a, F: GetFn> {
+pub struct Get<'a, F: Callback> {
     owner: &'a mut Channel,
     /// Must be locked by `owner.user_data().process` mutex
     state: UnsafeCell<GetState<F>>,
@@ -41,7 +39,7 @@ pub struct Get<'a, F: GetFn> {
     _pp: PhantomPinned,
 }
 
-impl<'a, F: GetFn> Get<'a, F> {
+impl<'a, F: Callback> Get<'a, F> {
     pub(crate) fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
             owner,
@@ -60,7 +58,7 @@ impl<'a, F: GetFn> Get<'a, F> {
             proc.data = this.state.get() as *mut u8;
             result_from_raw(unsafe {
                 sys::ca_array_get_callback(
-                    F::Request::ENUM.raw() as _,
+                    F::Request::ID.raw() as _,
                     0,
                     owner.raw(),
                     Some(Self::callback),
@@ -88,7 +86,7 @@ impl<'a, F: GetFn> Get<'a, F> {
         };
         *state = GetState::Ready(func.apply(result_from_raw(args.status).and_then(|()| {
             debug_assert_eq!(
-                F::Request::ENUM,
+                F::Request::ID,
                 RequestId::try_from_raw(args.type_ as _).unwrap()
             );
             F::Request::from_ptr(args.dbr as *const u8, args.count as usize)
@@ -97,7 +95,7 @@ impl<'a, F: GetFn> Get<'a, F> {
     }
 }
 
-impl<'a, F: GetFn> Future for Get<'a, F> {
+impl<'a, F: Callback> Future for Get<'a, F> {
     type Output = Result<F::Output, Error>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.owner.user_data().waker.register(cx.waker());
@@ -125,7 +123,7 @@ impl<'a, F: GetFn> Future for Get<'a, F> {
 }
 
 #[pinned_drop]
-impl<'a, F: GetFn> PinnedDrop for Get<'a, F> {
+impl<'a, F: Callback> PinnedDrop for Get<'a, F> {
     #[allow(clippy::needless_lifetimes)]
     fn drop(self: Pin<&mut Self>) {
         let mut proc = self.owner.user_data().process.lock().unwrap();
@@ -134,7 +132,7 @@ impl<'a, F: GetFn> PinnedDrop for Get<'a, F> {
     }
 }
 
-pub struct GetWrapper<R, O, F>
+pub struct GetFn<R, O, F = fn(Result<&R, Error>) -> Result<O, Error>>
 where
     R: ReadRequest + ?Sized,
     O: Send,
@@ -144,7 +142,21 @@ where
     _p: PhantomData<(*const R, O)>,
 }
 
-unsafe impl<R, O, F> Send for GetWrapper<R, O, F>
+impl<R, O, F> GetFn<R, O, F>
+where
+    R: ReadRequest + ?Sized,
+    O: Send,
+    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
+{
+    pub(crate) fn new(f: F) -> Self {
+        Self {
+            func: f,
+            _p: PhantomData,
+        }
+    }
+}
+
+unsafe impl<R, O, F> Send for GetFn<R, O, F>
 where
     R: ReadRequest + ?Sized,
     O: Send,
@@ -152,7 +164,7 @@ where
 {
 }
 
-impl<R, O, F> GetFn for GetWrapper<R, O, F>
+impl<R, O, F> Callback for GetFn<R, O, F>
 where
     R: ReadRequest + ?Sized,
     O: Send,
@@ -162,19 +174,5 @@ where
     type Output = O;
     fn apply(self, input: Result<&Self::Request, Error>) -> Result<Self::Output, Error> {
         (self.func)(input)
-    }
-}
-
-impl<R, O, F> From<F> for GetWrapper<R, O, F>
-where
-    R: ReadRequest + ?Sized,
-    O: Send,
-    F: FnOnce(Result<&R, Error>) -> Result<O, Error> + Send,
-{
-    fn from(func: F) -> Self {
-        Self {
-            func,
-            _p: PhantomData,
-        }
     }
 }
