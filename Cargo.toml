@@ -34,4 +34,4 @@ version = "0.1"
 futures = "0.3.25"
 async-std = { version = "1.12.0", features = ["attributes"] }
 serial_test = "0.9.0"
-c_str_macro = "1.0.3"
+cstr = "0.2.11"

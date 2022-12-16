@@ -125,7 +125,7 @@ impl<'a, T: Field> Callback for GetToSlice<'a, T> {
 mod tests {
     use crate::Context;
     use async_std::{task::sleep, test as async_test};
-    use c_str_macro::c_str;
+    use cstr::cstr;
     use futures::{join, pin_mut, StreamExt};
     use serial_test::serial;
     use std::{f64::consts::PI, time::Duration};
@@ -135,10 +135,10 @@ mod tests {
     async fn put_get_scalar() {
         let ctx = Context::new().unwrap();
 
-        let mut output = ctx.connect::<f64>(c_str!("ca:test:ao")).await.unwrap();
+        let mut output = ctx.connect::<f64>(cstr!("ca:test:ao")).await.unwrap();
         output.put(PI).unwrap().await.unwrap();
 
-        let mut input = ctx.connect::<f64>(c_str!("ca:test:ai")).await.unwrap();
+        let mut input = ctx.connect::<f64>(cstr!("ca:test:ai")).await.unwrap();
         assert_eq!(input.get().await.unwrap(), PI);
     }
 
@@ -147,8 +147,8 @@ mod tests {
     async fn subscribe_buffered() {
         let ctx = Context::new().unwrap();
 
-        let mut output = ctx.connect::<f64>(c_str!("ca:test:ao")).await.unwrap();
-        let mut input = ctx.connect::<f64>(c_str!("ca:test:ai")).await.unwrap();
+        let mut output = ctx.connect::<f64>(cstr!("ca:test:ao")).await.unwrap();
+        let mut input = ctx.connect::<f64>(cstr!("ca:test:ai")).await.unwrap();
 
         output.put(0.0).unwrap().await.unwrap();
         let monitor = input.subscribe_buffered();
@@ -180,8 +180,8 @@ mod tests {
     async fn put_get_array() {
         let ctx = Context::new().unwrap();
 
-        let mut output = ctx.connect::<[i32]>(c_str!("ca:test:aao")).await.unwrap();
-        let mut input = ctx.connect::<[i32]>(c_str!("ca:test:aai")).await.unwrap();
+        let mut output = ctx.connect::<[i32]>(cstr!("ca:test:aao")).await.unwrap();
+        let mut input = ctx.connect::<[i32]>(cstr!("ca:test:aai")).await.unwrap();
 
         let data = (0..8).into_iter().collect::<Vec<i32>>();
         output.put_ref(&data).unwrap().await.unwrap();
@@ -193,8 +193,8 @@ mod tests {
     async fn subscribe_array() {
         let ctx = Context::new().unwrap();
 
-        let mut output = ctx.connect::<[i32]>(c_str!("ca:test:aao")).await.unwrap();
-        let mut input = ctx.connect::<[i32]>(c_str!("ca:test:aai")).await.unwrap();
+        let mut output = ctx.connect::<[i32]>(cstr!("ca:test:aao")).await.unwrap();
+        let mut input = ctx.connect::<[i32]>(cstr!("ca:test:aai")).await.unwrap();
 
         output.put_ref(&[-1]).unwrap().await.unwrap();
         let monitor = input.subscribe_vec();

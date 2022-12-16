@@ -177,14 +177,14 @@ fn copy_some<R: Copy>(input: Result<&R, Error>) -> Option<Result<R, Error>> {
 mod tests {
     use crate::{Channel, Context};
     use async_std::test as async_test;
-    use c_str_macro::c_str;
+    use cstr::cstr;
     use serial_test::serial;
 
     #[async_test]
     #[serial]
     async fn downcast() {
         let ctx = Context::new().unwrap();
-        let mut base = Channel::new(&ctx, c_str!("ca:test:ai")).unwrap();
+        let mut base = Channel::new(&ctx, cstr!("ca:test:ai")).unwrap();
         base.connected().await;
         let base = base.into_typed::<u8>().unwrap_err().1;
         base.into_typed::<f64>().unwrap();

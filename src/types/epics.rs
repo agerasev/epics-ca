@@ -84,6 +84,8 @@ impl<const N: usize> Ord for StaticCString<N> {
 }
 
 impl<const N: usize> StaticCString<N> {
+    pub const MAX_LEN: usize = N - 1;
+
     pub fn len(&self) -> Option<usize> {
         self.data
             .iter()

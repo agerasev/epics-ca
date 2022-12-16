@@ -27,9 +27,9 @@ fn main() -> Result<(), Error> {
             format!("-I{}/include/os/Linux", epics_base),
             "-DCA_DONT_INCLUDE_STDARGH".to_string(),
         ])
-        .header(&format!("{}/include/cadef.h", epics_base))
+        .header(format!("{}/include/cadef.h", epics_base))
         .allowlist_recursively(false)
-        .allowlist_file(&format!("{}/include/cadef.h", epics_base))
+        .allowlist_file(format!("{}/include/cadef.h", epics_base))
         .allowlist_file(format!("{}/include/epicsTypes.h", epics_base))
         .allowlist_type("epicsTimeStamp")
         .allowlist_type("epicsThreadId")
@@ -37,7 +37,7 @@ fn main() -> Result<(), Error> {
         .allowlist_file(format!("{}/include/caerr.h", epics_base))
         .allowlist_file(format!("{}/include/caeventmask.h", epics_base))
         .blocklist_type("ca_access_rights")
-        .header(&format!("{}/include/alarm.h", epics_base))
+        .header(format!("{}/include/alarm.h", epics_base))
         .allowlist_file(format!("{}/include/alarm.h", epics_base))
         .raw_line("use crate::{ca_access_rights, epicsThreadOSD};")
         .generate()?

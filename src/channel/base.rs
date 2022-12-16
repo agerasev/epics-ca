@@ -194,7 +194,6 @@ impl<'a> FusedFuture for Connect<'a> {
 
 impl Channel {
     unsafe extern "C" fn connect_callback(args: sys::connection_handler_args) {
-        println!("connect_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
         user_data.connected.store(
             match args.op as _ {
@@ -227,7 +226,7 @@ impl Channel {
 mod tests {
     use crate::{context::UniqueContext, Channel, Context};
     use async_std::{task::sleep, test as async_test};
-    use c_str_macro::c_str;
+    use cstr::cstr;
     use futures::{select, FutureExt};
     use serial_test::serial;
     use std::{ptr, time::Duration};
@@ -236,7 +235,7 @@ mod tests {
     #[serial]
     async fn connect() {
         let ctx = Context::new().unwrap();
-        Channel::new(&ctx, c_str!("ca:test:ai"))
+        Channel::new(&ctx, cstr!("ca:test:ai"))
             .unwrap()
             .connected()
             .await;
@@ -244,7 +243,7 @@ mod tests {
 
     #[async_test]
     async fn connect_nonexistent() {
-        let mut chan = Channel::new(&Context::new().unwrap(), c_str!("__nonexistent__")).unwrap();
+        let mut chan = Channel::new(&Context::new().unwrap(), cstr!("__nonexistent__")).unwrap();
         select! {
             _ = chan.connected() => panic!(),
             _ = sleep(Duration::from_millis(100)).fuse() => (),
@@ -255,7 +254,7 @@ mod tests {
     #[serial]
     async fn user_data() {
         let ctx = Context::new().unwrap();
-        let mut channel = Channel::new(&ctx, c_str!("ca:test:ai")).unwrap();
+        let mut channel = Channel::new(&ctx, cstr!("ca:test:ai")).unwrap();
         channel.connected().await;
 
         // Test that user data can be accessed without context attachment.

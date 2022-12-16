@@ -47,7 +47,6 @@ impl<'a> Put<'a> {
     }
 
     unsafe extern "C" fn callback(args: sys::event_handler_args) {
-        println!("put_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
         let mut proc = user_data.process.lock().unwrap();
         if proc.id() != args.usr as usize {

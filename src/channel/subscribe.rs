@@ -99,7 +99,6 @@ impl<'a, F: Queue> Subscription<'a, F> {
     }
 
     unsafe extern "C" fn callback(args: sys::event_handler_args) {
-        println!("subscribe_callback: {:?}", args);
         let user_data = &*(sys::ca_puser(args.chid) as *const UserData);
         let proc = user_data.process.lock().unwrap();
         if proc.id() != args.usr as usize {
