@@ -1,36 +1,27 @@
-pub mod array;
 pub mod base;
 pub mod get;
 pub mod put;
-pub mod scalar;
 pub mod subscribe;
+pub mod typed;
+pub mod value;
 
-pub use array::ArrayChannel;
 pub use base::{Channel, Connect};
 pub use get::{Get, GetFn};
 pub use put::Put;
-pub use scalar::ScalarChannel;
 pub use subscribe::Subscription;
+pub use typed::TypedChannel;
+pub use value::ValueChannel;
 
-use crate::{context::Context, error::Error, types::Field};
-use std::{ffi::CStr, sync::Arc};
+use crate::{context::Context, error::Error, types::Value};
+use std::ffi::CStr;
 
 impl Context {
-    /// Create channel and wait for connection.
-    pub async fn connect(self: Arc<Context>, name: &CStr) -> Result<Channel, Error> {
-        let mut chan = Channel::new(self, name)?;
-        chan.connected().await;
-        Ok(chan)
-    }
-
     /// Create channel, wait for connection, and try to cast it to typed one.
-    pub async fn connect_typed<T: Field>(
-        self: Arc<Context>,
-        name: &CStr,
-    ) -> Result<ArrayChannel<T>, Error> {
+    pub async fn connect<V: Value + ?Sized>(&self, name: &CStr) -> Result<ValueChannel<V>, Error> {
         let mut chan = Channel::new(self, name)?;
         chan.connected().await;
-        chan.into_array::<T>().map_err(|(err, _)| err)
+        let typed = chan.into_typed::<V>().map_err(|(err, _)| err)?;
+        Ok(typed.into_value())
     }
 }
 

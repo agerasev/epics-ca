@@ -1,15 +1,15 @@
 use crate::error::{result_from_raw, Error};
-use std::{ptr::NonNull, sync::Arc};
+use std::{ops::Deref, ptr::NonNull, sync::Arc};
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Context {
+#[derive(Debug)]
+pub struct UniqueContext {
     raw: NonNull<sys::ca_client_context>,
 }
 
-unsafe impl Send for Context {}
+unsafe impl Send for UniqueContext {}
 
-impl Context {
-    pub fn new() -> Result<Arc<Self>, Error> {
+impl UniqueContext {
+    pub fn new() -> Result<Self, Error> {
         let prev = Self::current();
         if !prev.is_null() {
             Self::detach();
@@ -29,7 +29,7 @@ impl Context {
         if let Some(prev) = NonNull::new(prev) {
             Self::attach(prev);
         }
-        ret.map(Arc::new)
+        ret
     }
     pub(crate) fn current() -> *mut sys::ca_client_context {
         unsafe { sys::ca_current_context() }
@@ -64,7 +64,7 @@ impl Context {
     }
 }
 
-impl Drop for Context {
+impl Drop for UniqueContext {
     fn drop(&mut self) {
         let prev = Self::current();
         if !prev.is_null() {
@@ -78,9 +78,31 @@ impl Drop for Context {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Context {
+    arc: Arc<UniqueContext>,
+}
+
+unsafe impl Send for Context {}
+
+impl Deref for Context {
+    type Target = UniqueContext;
+    fn deref(&self) -> &Self::Target {
+        &self.arc
+    }
+}
+
+impl Context {
+    pub fn new() -> Result<Self, Error> {
+        UniqueContext::new().map(|uniq| Self {
+            arc: Arc::new(uniq),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Context;
+    use super::UniqueContext as Context;
 
     #[test]
     fn new() {

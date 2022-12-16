@@ -1,99 +1,66 @@
 use crate::{
-    types::{EpicsEnum, EpicsString, Field, FieldId},
-    ArrayChannel, Context, ScalarChannel,
+    types::{EpicsEnum, EpicsString},
+    Context,
 };
 use async_std::test as async_test;
 use c_str_macro::c_str;
 use serial_test::serial;
-use std::{
-    f64::consts::{E, PI},
-    ffi::CStr,
-    sync::Arc,
-};
-
-async fn connect_and_check<T: Field>(
-    ctx: Arc<Context>,
-    name: &CStr,
-    dbf: FieldId,
-) -> ScalarChannel<T> {
-    let chan = ctx.connect(name).await.unwrap();
-    assert_eq!(chan.name(), name);
-    assert_eq!(chan.field_type().unwrap(), dbf);
-    assert_eq!(chan.element_count().unwrap(), 1);
-    chan.into_array::<T>().unwrap().into_scalar().unwrap()
-}
+use std::f64::consts::{E, PI};
 
 #[async_test]
 #[serial]
 async fn analog() {
     let ctx = Context::new().unwrap();
-    let mut output =
-        connect_and_check::<f64>(ctx.clone(), c_str!("ca:test:ao"), FieldId::Double).await;
-    let mut input =
-        connect_and_check::<f64>(ctx.clone(), c_str!("ca:test:ai"), FieldId::Double).await;
+    let mut output = ctx.connect::<f64>(c_str!("ca:test:ao")).await.unwrap();
+    let mut input = ctx.connect::<f64>(c_str!("ca:test:ai")).await.unwrap();
 
-    output.put::<f64>(E).unwrap().await.unwrap();
-    assert_eq!(input.get::<f64>().await.unwrap(), E);
+    output.put(E).unwrap().await.unwrap();
+    assert_eq!(input.get().await.unwrap(), E);
 
-    output.put::<f64>(PI).unwrap().await.unwrap();
-    assert_eq!(input.get::<f64>().await.unwrap(), PI);
+    output.put(PI).unwrap().await.unwrap();
+    assert_eq!(input.get().await.unwrap(), PI);
 }
 
 #[async_test]
 #[serial]
 async fn binary() {
     let ctx = Context::new().unwrap();
-    let mut output =
-        connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bo"), FieldId::Enum).await;
-    let mut input =
-        connect_and_check::<EpicsEnum>(ctx.clone(), c_str!("ca:test:bi"), FieldId::Enum).await;
-
-    output
-        .put::<EpicsEnum>(EpicsEnum(1))
-        .unwrap()
+    let mut output = ctx
+        .connect::<EpicsEnum>(c_str!("ca:test:bo"))
         .await
         .unwrap();
-    assert_eq!(input.get::<EpicsEnum>().await.unwrap(), EpicsEnum(1));
-
-    output
-        .put::<EpicsEnum>(EpicsEnum(0))
-        .unwrap()
+    let mut input = ctx
+        .connect::<EpicsEnum>(c_str!("ca:test:bi"))
         .await
         .unwrap();
-    assert_eq!(input.get::<EpicsEnum>().await.unwrap(), EpicsEnum(0));
+
+    output.put(EpicsEnum(1)).unwrap().await.unwrap();
+    assert_eq!(input.get().await.unwrap(), EpicsEnum(1));
+
+    output.put(EpicsEnum(0)).unwrap().await.unwrap();
+    assert_eq!(input.get().await.unwrap(), EpicsEnum(0));
 }
 
 #[async_test]
 #[serial]
 async fn string() {
     let ctx = Context::new().unwrap();
-    let mut output =
-        connect_and_check::<EpicsString>(ctx.clone(), c_str!("ca:test:stringout"), FieldId::String)
-            .await;
-    let mut input =
-        connect_and_check::<EpicsString>(ctx.clone(), c_str!("ca:test:stringin"), FieldId::String)
-            .await;
+    let mut output = ctx
+        .connect::<EpicsString>(c_str!("ca:test:stringout"))
+        .await
+        .unwrap();
+    let mut input = ctx
+        .connect::<EpicsString>(c_str!("ca:test:stringin"))
+        .await
+        .unwrap();
 
     let data = EpicsString::from_cstr(c_str!("abcdefghijklmnopqrstuvwxyz")).unwrap();
-    output.put::<EpicsString>(data).unwrap().await.unwrap();
-    assert_eq!(input.get::<EpicsString>().await.unwrap(), data);
+    output.put(data).unwrap().await.unwrap();
+    assert_eq!(input.get().await.unwrap(), data);
 
     let data = EpicsString::from_cstr(c_str!("0123456789abcdefghijABCDEFGHIJ!@#$%^&*(")).unwrap();
-    output.put::<EpicsString>(data).unwrap().await.unwrap();
-    assert_eq!(input.get::<EpicsString>().await.unwrap(), data);
-}
-
-async fn connect_and_check_array<T: Field>(
-    ctx: Arc<Context>,
-    name: &CStr,
-    dbf: FieldId,
-    count: usize,
-) -> ArrayChannel<T> {
-    let chan = ctx.connect(name).await.unwrap();
-    assert_eq!(chan.name(), name);
-    assert_eq!(chan.field_type().unwrap(), dbf);
-    assert_eq!(chan.element_count().unwrap(), count);
-    chan.into_array::<T>().unwrap()
+    output.put(data).unwrap().await.unwrap();
+    assert_eq!(input.get().await.unwrap(), data);
 }
 
 #[async_test]
@@ -101,21 +68,19 @@ async fn connect_and_check_array<T: Field>(
 async fn array() {
     let ctx = Context::new().unwrap();
     let max_len = 64;
-    let mut output =
-        connect_and_check_array::<i32>(ctx.clone(), c_str!("ca:test:aao"), FieldId::Long, max_len)
-            .await;
-    let mut input =
-        connect_and_check_array::<i32>(ctx.clone(), c_str!("ca:test:aai"), FieldId::Long, max_len)
-            .await;
+    let mut output = ctx.connect::<[i32]>(c_str!("ca:test:aao")).await.unwrap();
+    let mut input = ctx.connect::<[i32]>(c_str!("ca:test:aai")).await.unwrap();
+    assert_eq!(output.element_count().unwrap(), max_len);
+    assert_eq!(input.element_count().unwrap(), max_len);
 
     let data = (0..42).collect::<Vec<_>>();
-    output.put::<[i32]>(&data).unwrap().await.unwrap();
+    output.put_ref(&data).unwrap().await.unwrap();
     assert_eq!(Vec::from(input.get_boxed().await.unwrap()), data);
 
     let data = (-64..0).collect::<Vec<_>>();
-    output.put::<[i32]>(&data).unwrap().await.unwrap();
+    output.put_ref(&data).unwrap().await.unwrap();
     assert_eq!(Vec::from(input.get_boxed().await.unwrap()), data);
 
-    output.put::<[i32]>(&[]).unwrap().await.unwrap();
+    output.put_ref(&[]).unwrap().await.unwrap();
     assert_eq!(Vec::from(input.get_boxed().await.unwrap()), []);
 }
