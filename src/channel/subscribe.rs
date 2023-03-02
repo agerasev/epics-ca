@@ -45,6 +45,8 @@ pub struct Subscription<'a, F: Queue> {
     _pp: PhantomPinned,
 }
 
+unsafe impl<'a, F: Queue> Send for Subscription<'a, F> {}
+
 impl<'a, F: Queue> Subscription<'a, F> {
     pub(crate) fn new(owner: &'a mut Channel, func: F) -> Self {
         Self {
