@@ -110,7 +110,7 @@ impl<const N: usize> StaticCString<N> {
             let mut this = Self::default();
             unsafe {
                 copy_nonoverlapping(
-                    bytes.as_ptr() as *const i8,
+                    bytes.as_ptr() as *const c_char,
                     this.data.as_mut_ptr(),
                     bytes.len() + 1,
                 )

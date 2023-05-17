@@ -12,6 +12,7 @@ fn epics_target(target: &str) -> String {
 
 fn main() {
     println!("cargo:rustc-link-lib=dylib=ca");
+    println!("cargo:rustc-link-lib=dylib=Com");
     if let Ok(epics_base) = env::var("EPICS_BASE") {
         let target = env::var("TARGET").unwrap();
         println!(
