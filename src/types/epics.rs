@@ -3,6 +3,7 @@ use derive_more::{From, Into};
 use std::{
     cmp::Ordering,
     ffi::{c_char, CStr},
+    fmt::{self, Debug, Formatter},
     ops::Deref,
     ptr::copy_nonoverlapping,
     time::{Duration, SystemTime},
@@ -13,10 +14,17 @@ use std::{
 pub struct EpicsEnum(pub u16);
 
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct EpicsTimeStamp(pub sys::epicsTimeStamp);
 
 impl EpicsTimeStamp {
+    pub fn sec(&self) -> u32 {
+        self.0.secPastEpoch
+    }
+    pub fn nsec(&self) -> u32 {
+        self.0.nsec
+    }
+
     pub fn to_system(self) -> SystemTime {
         let unix_epoch = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap();
         let epics_epoch = Utc.with_ymd_and_hms(1990, 1, 1, 0, 0, 0).unwrap();
@@ -53,7 +61,18 @@ impl Ord for EpicsTimeStamp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq)]
+impl Debug for EpicsTimeStamp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EpicsTimeStamp {{ sec: {}, nsec: {} }}",
+            self.sec(),
+            self.nsec()
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct StaticCString<const N: usize> {
     data: [c_char; N],
@@ -70,6 +89,8 @@ impl<const N: usize> PartialEq for StaticCString<N> {
         self.deref().eq(other.deref())
     }
 }
+
+impl<const N: usize> Eq for StaticCString<N> {}
 
 impl<const N: usize> PartialOrd for StaticCString<N> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -130,6 +151,12 @@ impl<const N: usize> Deref for StaticCString<N> {
             "String is not nul-terminated"
         );
         unsafe { CStr::from_ptr(self.data.as_ptr()) }
+    }
+}
+
+impl<const N: usize> Debug for StaticCString<N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.deref())
     }
 }
 

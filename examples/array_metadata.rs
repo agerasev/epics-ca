@@ -17,22 +17,22 @@ async fn main() {
     {
         let value = [0, 1, 2, 3];
         channel.put_ref::<[i32]>(&value).unwrap().await.unwrap();
-        println!("Put {:?}", value);
+        println!("Put: {:?}", value);
     }
 
     {
         let value = channel.get_boxed::<[i32]>().await.unwrap().into_vec();
-        println!("Got value {:?}", value);
+        println!("Got: {:?}", value);
         assert_eq!(value, [0, 1, 2, 3]);
     }
 
     {
         let request = channel.get_boxed::<Time<[i32]>>().await.unwrap();
-        println!("Got time {:?}", request);
+        println!("Got: {:?}", request);
     }
 
     {
         let request = channel.get_boxed::<CtrlInt<[i32]>>().await.unwrap();
-        println!("Got ctrl {:?}", request);
+        println!("Got: {:?}", request);
     }
 }

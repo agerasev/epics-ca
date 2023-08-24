@@ -18,22 +18,22 @@ async fn main() {
     {
         let value = PI;
         channel.put(value).unwrap().await.unwrap();
-        println!("Put {}", value);
+        println!("Put: {}", value);
     }
 
     {
         let value = channel.get::<f64>().await.unwrap();
-        println!("Got {}", value);
+        println!("Got: {}", value);
         assert_eq!(value, PI);
     }
 
     {
         let request = channel.get::<Time<f64>>().await.unwrap();
-        println!("Got time {:?}", request);
+        println!("Got: {:?}", request);
     }
 
     {
         let request = channel.get::<CtrlFloat<f64>>().await.unwrap();
-        println!("Got ctrl {:?}", request);
+        println!("Got: {:?}", request);
     }
 }

@@ -12,12 +12,12 @@ async fn main() {
     {
         let value = [0, 1, 2, 3];
         channel.put_ref(&value).unwrap().await.unwrap();
-        println!("Put {:?}", value);
+        println!("Put: {:?}", value);
     }
 
     {
         let value = channel.get_vec().await.unwrap();
-        println!("Got {:?}", &value);
+        println!("Got: {:?}", &value);
         assert_eq!(value, [0, 1, 2, 3]);
     }
 }

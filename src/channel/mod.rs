@@ -1,3 +1,11 @@
+//! There are three kinds of channels:
+//!
+//! + [`Channel`] - raw channel without knowledge of what is inside.
+//! + [`TypedChannel`] - channel that knows type of its items and whether it is scalar or array. Created with [`Channel::into_typed`].
+//! + [`ValueChannel`] - convenience wrapper around [`TypedChannel`].
+//!   Recommended to use when you need PV values only, not metadata. Created by [`Context::connect`] or [`TypedChannel::into_value`].
+//!
+
 pub mod base;
 pub mod get;
 pub mod put;

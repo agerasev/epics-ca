@@ -157,7 +157,6 @@ mod tests {
 
         let count = 0x10;
         let values = (0..count)
-            .into_iter()
             .map(|i| (i + 1) as f64 / 16.0)
             .collect::<Vec<_>>();
         join!(
@@ -183,7 +182,7 @@ mod tests {
         let mut output = ctx.connect::<[i32]>(cstr!("ca:test:aao")).await.unwrap();
         let mut input = ctx.connect::<[i32]>(cstr!("ca:test:aai")).await.unwrap();
 
-        let data = (0..8).into_iter().collect::<Vec<i32>>();
+        let data = (0..8).collect::<Vec<i32>>();
         output.put_ref(&data).unwrap().await.unwrap();
         assert_eq!(input.get_vec().await.unwrap(), data);
     }

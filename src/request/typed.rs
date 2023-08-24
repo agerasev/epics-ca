@@ -3,6 +3,7 @@ use crate::{
     error::{self, Error},
     types::*,
 };
+use derivative::Derivative;
 use std::{
     alloc::{alloc, Layout},
     mem::{size_of, MaybeUninit},
@@ -86,9 +87,11 @@ impl<V: Value + ?Sized> ReadRequest for V {}
 impl<V: Value + ?Sized> WriteRequest for V {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct Sts<V: Value + ?Sized> {
     pub alarm: Alarm,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__StsPad,
     pub value: V,
 }
@@ -103,7 +106,8 @@ impl<V: Value + ?Sized> TypedRequest for Sts<V> {
 impl<V: Value + ?Sized> ReadRequest for Sts<V> {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct StsackString<V: Value<Item = EpicsString> + ?Sized> {
     pub alarm: Alarm,
     pub ackt: u16,
@@ -121,10 +125,12 @@ impl<V: Value<Item = EpicsString> + ?Sized> TypedRequest for StsackString<V> {
 impl<V: Value<Item = EpicsString> + ?Sized> ReadRequest for StsackString<V> {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct Time<V: Value + ?Sized> {
     pub alarm: Alarm,
     pub stamp: EpicsTimeStamp,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__TimePad,
     pub value: V,
 }
@@ -139,7 +145,8 @@ impl<V: Value + ?Sized> TypedRequest for Time<V> {
 impl<V: Value + ?Sized> ReadRequest for Time<V> {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct GrInt<V: Value + ?Sized>
 where
     V::Item: Int,
@@ -152,6 +159,7 @@ where
     pub upper_warning_limit: V::Item,
     pub lower_warning_limit: V::Item,
     pub lower_alarm_limit: V::Item,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__GrPad,
     pub value: V,
 }
@@ -172,13 +180,15 @@ where
 impl<V: Value + ?Sized> ReadRequest for GrInt<V> where V::Item: Int {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct GrFloat<V: Value + ?Sized>
 where
     V::Item: Float,
 {
     pub alarm: Alarm,
     pub precision: i16,
+    #[derivative(Debug = "ignore")]
     _units_padding: [MaybeUninit<u8>; 2],
     pub units: Units,
     pub upper_disp_limit: V::Item,
@@ -187,6 +197,7 @@ where
     pub upper_warning_limit: V::Item,
     pub lower_warning_limit: V::Item,
     pub lower_alarm_limit: V::Item,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__GrPad,
     pub value: V,
 }
@@ -207,11 +218,13 @@ where
 impl<V: Value + ?Sized> ReadRequest for GrFloat<V> where V::Item: Float {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct GrEnum<V: Value<Item = EpicsEnum> + ?Sized> {
     pub alarm: Alarm,
     pub no_str: u16,
     pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__GrPad,
     pub value: V,
 }
@@ -226,9 +239,11 @@ impl<V: Value<Item = EpicsEnum> + ?Sized> TypedRequest for GrEnum<V> {
 impl<V: Value<Item = EpicsEnum> + ?Sized> ReadRequest for GrEnum<V> {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct GrString<V: Value<Item = EpicsString> + ?Sized> {
     pub alarm: Alarm,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__GrPad,
     pub value: V,
 }
@@ -243,7 +258,8 @@ impl<V: Value<Item = EpicsString> + ?Sized> TypedRequest for GrString<V> {
 impl<V: Value<Item = EpicsString> + ?Sized> ReadRequest for GrString<V> {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct CtrlInt<V: Value + ?Sized>
 where
     V::Item: Int,
@@ -258,6 +274,7 @@ where
     pub lower_alarm_limit: V::Item,
     pub upper_ctrl_limit: V::Item,
     pub lower_ctrl_limit: V::Item,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__CtrlPad,
     pub value: V,
 }
@@ -278,13 +295,15 @@ where
 impl<V: Value + ?Sized> ReadRequest for CtrlInt<V> where V::Item: Int {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct CtrlFloat<V: Value + ?Sized>
 where
     V::Item: Float,
 {
     pub alarm: Alarm,
     pub precision: i16,
+    #[derivative(Debug = "ignore")]
     _units_padding: MaybeUninit<u16>,
     pub units: Units,
     pub upper_disp_limit: V::Item,
@@ -295,6 +314,7 @@ where
     pub lower_alarm_limit: V::Item,
     pub upper_ctrl_limit: V::Item,
     pub lower_ctrl_limit: V::Item,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__CtrlPad,
     pub value: V,
 }
@@ -315,11 +335,13 @@ where
 impl<V: Value + ?Sized> ReadRequest for CtrlFloat<V> where V::Item: Float {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct CtrlEnum<V: Value<Item = EpicsEnum> + ?Sized> {
     pub alarm: Alarm,
     pub no_str: u16,
     pub strs: [StaticCString<MAX_ENUM_STRING_SIZE>; MAX_ENUM_STATES],
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__CtrlPad,
     pub value: V,
 }
@@ -334,9 +356,11 @@ impl<V: Value<Item = EpicsEnum> + ?Sized> TypedRequest for CtrlEnum<V> {
 impl<V: Value<Item = EpicsEnum> + ?Sized> ReadRequest for CtrlEnum<V> {}
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Derivative)]
+#[derivative(Debug)]
 pub struct CtrlString<V: Value<Item = EpicsString> + ?Sized> {
     pub alarm: Alarm,
+    #[derivative(Debug = "ignore")]
     _value_padding: <V::Item as Field>::__CtrlPad,
     pub value: V,
 }

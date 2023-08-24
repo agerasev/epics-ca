@@ -3,14 +3,14 @@ members = ["sys", "generator"]
 
 [workspace.package]
 authors = ["Alexey Gerasev <alexey.gerasev@gmail.com>"]
-homepage = "https://github.com/agerasev/epics-ca"
-repository = "https://github.com/agerasev/epics-ca.git"
+homepage = "https://gitlab.com/agerasev/epics-ca"
+repository = "https://gitlab.com/agerasev/epics-ca.git"
 readme = "README.md"
 license = "MIT/Apache-2.0"
 
 [package]
 name = "epics-ca"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 authors.workspace = true
@@ -32,6 +32,7 @@ chrono = { version = "0.4.23", default-features = false, features = ["std"] }
 pin-project = "1.0.12"
 derive_more = "0.99.17"
 bitflags = "1.3.2"
+derivative = "2.2.0"
 
 [dependencies.sys]
 package = "epics-ca-sys"

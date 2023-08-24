@@ -1,4 +1,10 @@
 //! Client library for EPICS Channel Access protocol.
+//!
+//! More info about:
+//!
+//! + [Channels](channel)
+//! + [Requests](request)
+//!
 
 /// Channels
 pub mod channel;
