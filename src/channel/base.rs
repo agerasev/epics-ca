@@ -55,7 +55,7 @@ impl Channel {
                     })
                 }
                 Err(e) => {
-                    unsafe { Box::from_raw(puser) };
+                    drop(unsafe { Box::from_raw(puser) });
                     Err(e)
                 }
             }
@@ -115,7 +115,7 @@ impl Drop for Channel {
         self.context().with(|| {
             let puser = self.user_data() as *const _ as *mut UserData;
             result_from_raw(unsafe { sys::ca_clear_channel(self.raw()) }).unwrap();
-            unsafe { Box::from_raw(puser) };
+            drop(unsafe { Box::from_raw(puser) });
         });
     }
 }
